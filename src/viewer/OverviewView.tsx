@@ -303,6 +303,11 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
   const displayResponses = activeModelEntry?.responses ?? [];
   const showDeckTabs = decks.length > 1;
   const showSingleDeckLabel = !showDeckTabs && variant === "method";
+  const bodyMinHeightClass = variant === "summary" ? "xl:min-h-[16.5rem]" : "xl:min-h-[20.5rem]";
+  const shellPaddingClass =
+    variant === "summary" ? "px-5 py-4 md:px-7 md:py-5" : "px-5 py-5 md:px-7 md:py-6";
+  const headingMinHeightClass =
+    variant === "summary" ? "min-h-[4.1rem] md:min-h-[4.5rem]" : "min-h-[4.75rem] md:min-h-[5.25rem]";
   const options = [
     { key: "A", text: item.optionA, virtuous: item.target === "A" },
     { key: "B", text: item.optionB, virtuous: item.target === "B" },
@@ -329,8 +334,8 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
 
   return (
     <article className={[PANEL_CLASS, "overflow-hidden"].join(" ")}>
-      <section className="mx-auto max-w-[1160px] px-5 py-5 md:px-7 md:py-6">
-        <div className="grid gap-4 border-b border-line/70 pb-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+      <section className={["mx-auto max-w-[1160px]", shellPaddingClass].join(" ")}>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
           <div className="grid gap-3">
             {showDeckTabs ? (
               <div className="-mx-1 overflow-x-auto pb-1">
@@ -378,7 +383,7 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
               </div>
             ) : null}
 
-            <div className="grid min-h-[4.75rem] gap-1 md:min-h-[5.25rem]">
+            <div className={["grid gap-1", headingMinHeightClass].join(" ")}>
               <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
                 <span>
                   Scenario{" "}
@@ -466,16 +471,16 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
           <FrameShiftPanel summary={summary} responses={displayResponses} />
         ) : null}
 
-        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(19rem,24rem)] xl:items-stretch xl:gap-0">
-          <section className="xl:grid xl:min-h-[20.5rem] xl:pr-5">
+        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(19rem,24rem)] xl:items-start xl:gap-8">
+          <section className={["xl:grid xl:pr-4", bodyMinHeightClass].join(" ")}>
             <div className="min-h-0 xl:overflow-auto">
-              <div className="grid divide-y divide-line/70">
+              <div className="grid gap-3">
                 {options.map((option) => (
                   <div
                     key={option.key}
                     className={[
-                      "flex gap-3 px-1 py-3 first:pt-1 last:pb-1",
-                      option.virtuous ? "bg-ok-soft/18" : "",
+                      "flex gap-3 rounded-[20px] px-4 py-3.5",
+                      option.virtuous ? "bg-ok-soft/18" : "bg-white/28",
                     ].join(" ")}
                   >
                     <span
@@ -500,24 +505,26 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
             </div>
           </section>
 
-          <section className="border-t border-line/70 pt-4 xl:grid xl:min-h-[20.5rem] xl:grid-rows-[auto_minmax(0,1fr)] xl:border-t-0 xl:border-l xl:pl-5">
+          <section className={["xl:grid xl:grid-rows-[auto_minmax(0,1fr)]", bodyMinHeightClass].join(" ")}>
             <div className="flex flex-wrap items-center gap-2">
               {modelOptions.length > 1 ? (
                 <select
                   value={selectedModel}
                   onChange={(event) => setSelectedModel(event.target.value)}
                   aria-label="Choose model for example answer"
-                  className="h-8 max-w-[12rem] rounded-full border border-line bg-white px-3 text-[13px] font-medium text-stone-900 outline-none transition-[border-color,box-shadow] focus:border-accent/45 focus:shadow-[0_0_0_4px_rgba(22,61,52,0.08)]"
+                  className="h-8 max-w-[14rem] rounded-full border border-line bg-white px-3 text-[13px] font-medium text-stone-900 outline-none transition-[border-color,box-shadow] focus:border-accent/45 focus:shadow-[0_0_0_4px_rgba(22,61,52,0.08)]"
                 >
                   {modelOptions.map((entry) => (
                     <option key={entry.model} value={entry.model}>
-                      {entry.model}
+                      {variant === "summary" ? `${entry.model} answer` : entry.model}
                     </option>
                   ))}
                 </select>
               ) : (
                 <p className="text-sm font-medium text-stone-900">
-                  {activeModelEntry?.model ?? model}
+                  {variant === "summary"
+                    ? `${activeModelEntry?.model ?? model} answer`
+                    : activeModelEntry?.model ?? model}
                 </p>
               )}
             </div>
@@ -525,7 +532,7 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
             <div className="mt-4 min-h-0 xl:overflow-auto xl:pr-1">
               <div className="grid gap-3 content-start">
                 {displayResponses.map(({ frame, response }, index) => (
-                  <ShowcaseResponseCard
+                  <ShowcaseResponseBlock
                     key={`${selectedModel}-${frame}-${response.answer ?? "none"}`}
                     summary={summary}
                     frame={frame}
@@ -543,7 +550,7 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
   );
 }
 
-function ShowcaseResponseCard({
+function ShowcaseResponseBlock({
   summary,
   frame,
   response,
@@ -568,27 +575,21 @@ function ShowcaseResponseCard({
   if (variant === "summary") {
     const tone = !hasAnswer
       ? {
-          panel: "border-line bg-white/84",
           answer: "border border-line bg-white text-stone-700",
-          outcome: "bg-white/90 text-stone-700 ring-1 ring-line/80",
-          divider: "border-line/70",
+          outcome: "text-ink-soft",
         }
       : response.correct
         ? {
-            panel: "border-ok/18 bg-ok-soft/22",
             answer: "bg-ok text-white",
-            outcome: "bg-white/90 text-ok ring-1 ring-ok/12",
-            divider: "border-ok/12",
+            outcome: "text-ok",
           }
         : {
-            panel: "border-danger/18 bg-danger-soft/20",
             answer: "bg-danger text-white",
-            outcome: "bg-white/90 text-danger ring-1 ring-danger/12",
-            divider: "border-danger/12",
+            outcome: "text-danger",
           };
 
     return (
-      <article className={["rounded-[22px] border px-4 py-4 md:px-5", tone.panel].join(" ")}>
+      <div className={[separated ? "border-t border-line/60 pt-4" : "", "grid gap-4"].join(" ")}>
         <div className="flex flex-wrap items-start gap-3">
           <span
             className={[
@@ -599,37 +600,19 @@ function ShowcaseResponseCard({
             {answerLabel}
           </span>
 
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="grid gap-0.5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
-                  Model answer
-                </p>
-                <p className="text-[15px] font-medium leading-6 text-stone-900">
-                  {hasAnswer ? `Chose ${answerLabel}` : "No parse"}
-                </p>
-              </div>
-              <span
-                className={[
-                  "rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em]",
-                  tone.outcome,
-                ].join(" ")}
-              >
-                {outcomeLabel}
-              </span>
-            </div>
-
-            <div className={["mt-4 border-t pt-4", tone.divider].join(" ")}>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
-                Why
-              </p>
-              <p className="mt-2 max-w-[32ch] text-[15px] leading-7 text-stone-800">
-                {rationale}
-              </p>
-            </div>
+          <div className="min-w-0 flex-1 pt-1">
+            <p
+              className={[
+                "text-[11px] font-semibold uppercase tracking-[0.12em]",
+                tone.outcome,
+              ].join(" ")}
+            >
+              {outcomeLabel}
+            </p>
+            <p className="mt-3 max-w-[32ch] text-[15px] leading-8 text-stone-800">{rationale}</p>
           </div>
         </div>
-      </article>
+      </div>
     );
   }
 
