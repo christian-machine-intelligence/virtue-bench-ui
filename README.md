@@ -31,5 +31,6 @@ vp dev
 ## Deploy
 
 - Cloudflare Pages: build command `vp build`, output directory `dist`
+- GitHub Pages fallback: set Pages to `Deploy from a branch`, branch `gh-pages`, folder `/(root)`, then run `vp run publish:pages`
 
 The app is static. No backend. Vite uses a relative base so `public/data/` works on local dev and static hosts.

@@ -57,9 +57,7 @@ export function SummaryView({
     0,
   );
   const methodBlurb =
-    virtue === "courage"
-      ? "Courage is the clearest break in v1: when the good gets costly, models start calling retreat stewardship."
-      : "Framing, shared flips, and stable failures live on their own page.";
+    "See how framing changes answers, when models flip, and when they fail either way.";
 
   return (
     <section className="mx-auto grid w-full max-w-[1380px] gap-8">
@@ -70,13 +68,48 @@ export function SummaryView({
           </h2>
           <div className="grid max-w-[62ch] gap-4 text-[16px] leading-7 text-stone-800 md:text-[17px] md:leading-8">
             <p>
-              VirtueBench is not about catching overt evil. Labs already optimize heavily for that.
-              It asks whether a model still chooses the good when comfort, safety, and
-              self-preservation pull the other way.
+              VirtueBench is not about catching overt vice. Labs already optimize heavily for{" "}
+              <span className="inline-flex items-center gap-1 align-baseline">
+                <span>that</span>
+                <InfoPopover
+                  label="Show alignment references"
+                  widthClass="w-[min(24rem,calc(100vw-3rem))]"
+                  align="left"
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-accent">
+                    References
+                  </p>
+                  <p className="mt-3 text-sm leading-6 text-stone-800">
+                    Main alignment pipelines already train for harmlessness, reduced toxic output,
+                    and instruction-following. VirtueBench looks at a different case: whether models
+                    still choose the good under pressure, and how framing changes that choice.
+                  </p>
+                  <div className="mt-3 grid gap-2 text-sm leading-6">
+                    <a
+                      href="https://doi.org/10.48550/arxiv.2203.02155"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-stone-900 underline decoration-line-strong/80 underline-offset-3 transition-colors hover:text-accent"
+                    >
+                      Ouyang et al. (InstructGPT, 2022)
+                    </a>
+                    <a
+                      href="https://doi.org/10.48550/arxiv.2204.05862"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-stone-900 underline decoration-line-strong/80 underline-offset-3 transition-colors hover:text-accent"
+                    >
+                      Bai et al. (Helpful and Harmless, 2022)
+                    </a>
+                  </div>
+                </InfoPopover>
+              </span>
+              . We ask whether a model still chooses the good when comfort, safety, and
+              self-preservation are at stake.
             </p>
             <p>
-              It contains {totalItemCount} paired scenarios across Prudence, Justice, Courage, and
-              Temperance, drawing on Ambrose, Augustine, and Aquinas.
+              We test {totalItemCount} paired scenarios across the four virtues, drawing on Ambrose,
+              Augustine, and Aquinas.
             </p>
           </div>
         </div>
@@ -88,7 +121,7 @@ export function SummaryView({
                 Role
               </p>
               <p className="mt-1">
-                The model answers as the decision-maker, not as an outside judge.
+                The model answers in the first person, not as an outside judge.
               </p>
             </div>
             <div className="border-t border-line/70 pt-3">
@@ -107,8 +140,8 @@ export function SummaryView({
                     The export randomizes whether the virtuous answer appears as A or B, so scores
                     are not driven by answer position.
                   </InfoPopover>
-                </span>{" "}
-                and give one sentence explaining why.
+                </span>
+                . One sentence tells us why.
               </p>
             </div>
             <div className="border-t border-line/70 pt-3">
@@ -116,8 +149,7 @@ export function SummaryView({
                 Cost
               </p>
               <p className="mt-1">
-                The virtuous option can cost money, reputation, safety, comfort, or future
-                opportunity.
+                The good option can cost safety, comfort, reputation, money, or future advantage.
               </p>
             </div>
             <div className="border-t border-line/70 pt-3">
@@ -125,8 +157,8 @@ export function SummaryView({
                 Temptation
               </p>
               <p className="mt-1">
-                The tempting answer is written to sound prudent, responsible, and self-protective,
-                not openly vicious.
+                The tempting option is not openly evil. It is written to sound plausible,
+                responsible, and self-protective.
               </p>
             </div>
           </div>
@@ -148,65 +180,62 @@ export function SummaryView({
       </section>
 
       <section className="px-2">
-        <div className="grid gap-5 border-t border-line/70 pt-5 md:pt-6">
-          <div className="grid gap-5">
-            <div className="grid max-w-[66ch] gap-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
-                The Four Virtues
-              </p>
-              <p className="text-[15px] leading-7 text-stone-800">
-                Virtue is a golden mean: not too little, not too much, but rightly ordered character
-                over time.
-              </p>
-            </div>
+        <div className="grid gap-5 border-t border-line/70 pt-5 md:pt-6 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] xl:gap-8">
+          <div className="grid max-w-[32ch] gap-2 xl:pt-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
+              The Four Virtues
+            </p>
+            <p className="text-[15px] leading-7 text-stone-800">
+              Virtue is a golden mean: not too little, not too much, but rightly ordered over time.
+            </p>
+          </div>
 
-            <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-              {VIRTUE_PRIMER.map((entry) => {
-                const active = entry.name.toLowerCase() === virtue;
-                const entryVirtue = entry.name.toLowerCase();
+          <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+            {VIRTUE_PRIMER.map((entry) => {
+              const active = entry.name.toLowerCase() === virtue;
+              const entryVirtue = entry.name.toLowerCase();
 
-                return (
-                  <button
-                    key={entry.name}
-                    type="button"
-                    onClick={() => onSelectVirtue(entryVirtue)}
-                    className={[
-                      "min-h-28 rounded-[18px] px-4 py-3 text-left transition-[transform,background-color,color] active:scale-[0.99]",
-                      active ? "bg-white/58" : "bg-transparent hover:bg-white/34",
-                    ].join(" ")}
-                  >
-                    <div className="grid gap-3">
-                      <div className="flex items-center gap-2">
-                        <p
-                          className={[
-                            "text-[11px] font-semibold uppercase tracking-[0.12em]",
-                            active ? "text-accent" : "text-ink-soft",
-                          ].join(" ")}
-                        >
-                          {entry.name}
-                        </p>
-                        {active ? (
-                          <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent">
-                            Current
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div
-                        className={["h-px w-14", active ? "bg-accent/35" : "bg-line"].join(" ")}
-                      />
-
-                      <div>
-                        <p className="text-[15px] font-medium leading-6 text-stone-900">
-                          {entry.summary}
-                        </p>
-                        <p className="mt-1 text-sm leading-6 text-stone-700">{entry.mean}</p>
-                      </div>
+              return (
+                <button
+                  key={entry.name}
+                  type="button"
+                  onClick={() => onSelectVirtue(entryVirtue)}
+                  className={[
+                    "min-h-[6.75rem] rounded-[18px] px-4 py-3 text-left transition-[transform,background-color,border-color,color] active:scale-[0.99]",
+                    active
+                      ? "border border-line/80 bg-white/48"
+                      : "border border-transparent bg-white/12 hover:border-line/60 hover:bg-white/24",
+                  ].join(" ")}
+                >
+                  <div className="grid gap-3">
+                    <div className="flex items-center gap-2">
+                      <p
+                        className={[
+                          "text-[11px] font-semibold uppercase tracking-[0.12em]",
+                          active ? "text-accent" : "text-ink-soft",
+                        ].join(" ")}
+                      >
+                        {entry.name}
+                      </p>
+                      {active ? (
+                        <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent">
+                          Current
+                        </span>
+                      ) : null}
                     </div>
-                  </button>
-                );
-              })}
-            </div>
+
+                    <div className={["h-px w-14", active ? "bg-accent/35" : "bg-line"].join(" ")} />
+
+                    <div>
+                      <p className="text-[15px] font-medium leading-6 text-stone-900">
+                        {entry.summary}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-stone-700">{entry.mean}</p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -350,10 +379,10 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
             <div className="grid min-h-[4.75rem] gap-1 md:min-h-[5.25rem]">
               <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
                 <span>
-                  Scenario {item.id}
+                  Scenario{" "}
                   {activeDeck.entries.length > 1
-                    ? ` · ${activeIndex + 1} of ${activeDeck.entries.length}`
-                    : ""}
+                    ? `${activeIndex + 1} of ${activeDeck.entries.length}`
+                    : item.id}
                 </span>
                 <InfoPopover
                   label={`Show raw prompt for scenario ${item.id}`}
