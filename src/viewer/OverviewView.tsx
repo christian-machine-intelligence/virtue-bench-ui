@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
   buildPromptText,
@@ -33,6 +34,8 @@ const VIRTUE_PRIMER = [
     mean: "between indulgence and numb severity",
   },
 ] as const;
+const MODEL_PICKER_GAP = 10;
+const MODEL_PICKER_VIEWPORT_GUTTER = 12;
 
 type SummaryViewProps = {
   virtue: string;
@@ -271,10 +274,34 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
     sharedFlip: 0,
     stableFailure: 0,
   });
+  const [selectedModelsByKind, setSelectedModelsByKind] = useState<Record<ExampleKind, string | null>>({
+    benchmark: null,
+    sharedFlip: null,
+    stableFailure: null,
+  });
 
   useEffect(() => {
     setActiveShowcaseKind(decks[0]?.kind ?? "benchmark");
     setShowcaseIndices({ benchmark: 0, sharedFlip: 0, stableFailure: 0 });
+    setSelectedModelsByKind((current) => {
+      const next = { benchmark: null, sharedFlip: null, stableFailure: null } as Record<
+        ExampleKind,
+        string | null
+      >;
+
+      for (const deck of decks) {
+        const entry = deck.entries[0];
+        const fallbackModel =
+          entry?.modelOptions.find((option) => option.model === entry.model)?.model ??
+          entry?.modelOptions[0]?.model ??
+          entry?.model ??
+          null;
+
+        next[deck.kind] = current[deck.kind] ?? fallbackModel;
+      }
+
+      return next;
+    });
   }, [deckSignature, decks]);
 
   const activeDeck = decks.find((deck) => deck.kind === activeShowcaseKind) ?? decks[0] ?? null;
@@ -290,13 +317,17 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
   }
 
   const { item, model, modelOptions } = activeEntry;
-  const [selectedModel, setSelectedModel] = useState(model);
-
-  useEffect(() => {
-    const fallbackModel =
-      modelOptions.find((entry) => entry.model === model)?.model ?? modelOptions[0]?.model ?? model;
-    setSelectedModel(fallbackModel);
-  }, [activeShowcaseKind, item.id, model, modelOptions]);
+  const fallbackModel =
+    modelOptions.find((entry) => entry.model === model)?.model ?? modelOptions[0]?.model ?? model;
+  const selectedModel =
+    modelOptions.find((entry) => entry.model === selectedModelsByKind[activeDeck.kind])?.model ??
+    fallbackModel;
+  const setSelectedModel = (nextModel: string) => {
+    setSelectedModelsByKind((current) => ({
+      ...current,
+      [activeDeck.kind]: nextModel,
+    }));
+  };
 
   const activeModelEntry =
     modelOptions.find((entry) => entry.model === selectedModel) ?? modelOptions[0] ?? null;
@@ -507,26 +538,12 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
 
           <section className={["xl:grid xl:grid-rows-[auto_minmax(0,1fr)]", bodyMinHeightClass].join(" ")}>
             <div className="flex flex-wrap items-center gap-2">
-              {modelOptions.length > 1 ? (
-                <select
-                  value={selectedModel}
-                  onChange={(event) => setSelectedModel(event.target.value)}
-                  aria-label="Choose model for example answer"
-                  className="h-8 max-w-[14rem] rounded-full border border-line bg-white px-3 text-[13px] font-medium text-stone-900 outline-none transition-[border-color,box-shadow] focus:border-accent/45 focus:shadow-[0_0_0_4px_rgba(22,61,52,0.08)]"
-                >
-                  {modelOptions.map((entry) => (
-                    <option key={entry.model} value={entry.model}>
-                      {variant === "summary" ? `${entry.model} answer` : entry.model}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <p className="text-sm font-medium text-stone-900">
-                  {variant === "summary"
-                    ? `${activeModelEntry?.model ?? model} answer`
-                    : activeModelEntry?.model ?? model}
-                </p>
-              )}
+              <ShowcaseModelPicker
+                value={selectedModel}
+                options={modelOptions.map((entry) => entry.model)}
+                variant={variant}
+                onChange={setSelectedModel}
+              />
             </div>
 
             <div className="mt-4 min-h-0 xl:overflow-auto xl:pr-1">
@@ -547,6 +564,210 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
         </div>
       </section>
     </article>
+  );
+}
+
+function ShowcaseModelPicker({
+  value,
+  options,
+  variant,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  variant: "summary" | "method";
+  onChange: (value: string) => void;
+}) {
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [panelStyle, setPanelStyle] = useState<{ top: number; left: number; width: number } | null>(
+    null,
+  );
+  const selectedValue = options.includes(value) ? value : options[0] ?? value;
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open || typeof window === "undefined") return;
+
+    const updatePosition = () => {
+      const trigger = triggerRef.current;
+      const panel = panelRef.current;
+      if (!trigger || !panel) return;
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const width = Math.max(triggerRect.width, Math.min(304, viewportWidth - MODEL_PICKER_VIEWPORT_GUTTER * 2));
+
+      let left = triggerRect.left;
+      if (left + width > viewportWidth - MODEL_PICKER_VIEWPORT_GUTTER) {
+        left = viewportWidth - width - MODEL_PICKER_VIEWPORT_GUTTER;
+      }
+      left = Math.max(left, MODEL_PICKER_VIEWPORT_GUTTER);
+
+      let top = triggerRect.bottom + MODEL_PICKER_GAP;
+      const maxTop = Math.max(
+        MODEL_PICKER_VIEWPORT_GUTTER,
+        viewportHeight - panelRect.height - MODEL_PICKER_VIEWPORT_GUTTER,
+      );
+      const fallbackTop = triggerRect.top - panelRect.height - MODEL_PICKER_GAP;
+
+      if (top > maxTop && fallbackTop >= MODEL_PICKER_VIEWPORT_GUTTER) {
+        top = fallbackTop;
+      } else {
+        top = Math.min(top, maxTop);
+      }
+
+      setPanelStyle({ top, left, width });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, options.length]);
+
+  if (options.length <= 1) {
+    return <p className="text-sm font-medium text-stone-900">{formatShowcaseModelLabel(selectedValue, variant)}</p>;
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={triggerRef}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="inline-flex min-h-10 w-full min-w-[15rem] max-w-[18rem] items-center justify-between gap-3 rounded-full border border-line bg-white/92 px-3.5 py-2 text-left text-[13px] font-medium text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_10px_24px_rgba(28,24,20,0.05)] outline-none transition-[transform,background-color,border-color,box-shadow] hover:border-accent/30 hover:bg-white focus:border-accent/45 focus:shadow-[0_0_0_4px_rgba(22,61,52,0.08)] active:scale-[0.98]"
+      >
+        <span className="truncate">{formatShowcaseModelLabel(selectedValue, variant)}</span>
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 20 20"
+          className={["size-4 shrink-0 text-ink-soft transition-transform", open ? "rotate-180" : ""].join(" ")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="m5.5 7.5 4.5 5 4.5-5" />
+        </svg>
+      </button>
+
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={panelRef}
+              role="listbox"
+              aria-label="Choose model for example answer"
+              style={
+                panelStyle
+                  ? {
+                      position: "fixed",
+                      top: panelStyle.top,
+                      left: panelStyle.left,
+                      width: panelStyle.width,
+                    }
+                  : {
+                      position: "fixed",
+                      top: -9999,
+                      left: -9999,
+                      visibility: "hidden",
+                  }
+              }
+              className="z-[95] max-h-[min(70vh,28rem)] overflow-auto rounded-[22px] border border-line bg-[#fffdf9]/98 p-2 shadow-[0_22px_56px_rgba(28,24,20,0.16)] backdrop-blur-sm"
+            >
+              <div className="px-2.5 pb-2 pt-1">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+                  Choose model
+                </p>
+              </div>
+
+              <div className="grid gap-1">
+                {options.map((option) => {
+                  const selected = option === selectedValue;
+
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      onClick={() => {
+                        onChange(option);
+                        setOpen(false);
+                      }}
+                      className={[
+                        "flex w-full items-center justify-between gap-3 rounded-[16px] px-3 py-2.5 text-left transition-[background-color,color]",
+                        selected ? "bg-accent-soft/70 text-stone-900" : "text-stone-700 hover:bg-white",
+                      ].join(" ")}
+                    >
+                      <div className="grid gap-0.5">
+                        <span className="text-[13px] font-medium leading-5 text-inherit">{option}</span>
+                        {selected ? (
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-accent">
+                            Current
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <span
+                        className={[
+                          "inline-flex size-6 shrink-0 items-center justify-center rounded-full border transition-colors",
+                          selected
+                            ? "border-accent bg-accent text-white"
+                            : "border-line bg-white text-transparent",
+                        ].join(" ")}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 20 20"
+                          className="size-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.1"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="m4.5 10 3.5 3.5 7.5-7.5" />
+                        </svg>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
@@ -642,6 +863,10 @@ function formatShowcaseRationale(answer: string | null, rationale: string) {
   if (!trimmed || !answer) return trimmed;
 
   return trimmed.replace(new RegExp(`^${answer}\\s*[—–:-]\\s*`, "i"), "");
+}
+
+function formatShowcaseModelLabel(model: string, variant: "summary" | "method") {
+  return variant === "summary" ? `${model} answer` : model;
 }
 
 function FrameShiftPanel({
