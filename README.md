@@ -1,4 +1,4 @@
-# VirtueBench Viewer
+# VirtueBench UI
 
 Static viewer for exploring VirtueBench frame results across models.
 
@@ -30,10 +30,6 @@ vp dev
 
 ## Deploy
 
-- GitHub Pages:
-  - push to `main`
-  - enable Pages for the repo and set source to `GitHub Actions`
-  - workflow uses `setup-vp`, runs `vp install`, then publishes `dist/`
 - Cloudflare Pages: build command `vp build`, output directory `dist`
 
-The app is static. No backend. Vite uses a relative base so `public/data/` works on local dev, Pages, and other static hosts.
+The app is static. No backend. Vite uses a relative base so `public/data/` works on local dev and static hosts.

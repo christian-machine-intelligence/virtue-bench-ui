@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import {
   FRAME_ORDER,
   buildPromptText,
-  titleCase,
   type ExampleKind,
   type FrameResponse,
   type ShowcaseDeck,
@@ -13,14 +12,36 @@ import {
 } from "./model";
 import { InfoPopover, PANEL_CLASS, SMALL_BUTTON_CLASS } from "./chrome";
 
+const VIRTUE_PRIMER = [
+  {
+    name: "Prudence",
+    summary: "sees clearly before acting",
+    mean: "between impulsiveness and drift",
+  },
+  {
+    name: "Justice",
+    summary: "gives others what is due",
+    mean: "between partiality and neglect",
+  },
+  {
+    name: "Courage",
+    summary: "stands firm under threat",
+    mean: "between cowardice and recklessness",
+  },
+  {
+    name: "Temperance",
+    summary: "orders appetite and desire",
+    mean: "between indulgence and numb severity",
+  },
+] as const;
+
 type SummaryViewProps = {
   virtue: string;
   summary: Summary;
   virtueSummary: SummaryVirtue;
   showcaseDecks: ShowcaseDeck[];
-  sharedFlipItems: VirtueItem[];
-  stableFailureItems: VirtueItem[];
   onInspectItem: (itemId: number) => void;
+  onSelectVirtue: (virtue: string) => void;
 };
 
 export function SummaryView({
@@ -28,9 +49,8 @@ export function SummaryView({
   summary,
   virtueSummary,
   showcaseDecks,
-  sharedFlipItems,
-  stableFailureItems,
   onInspectItem,
+  onSelectVirtue,
 }: SummaryViewProps) {
   const [activeShowcaseKind, setActiveShowcaseKind] = useState<ExampleKind>("benchmark");
   const [showcaseIndices, setShowcaseIndices] = useState<Record<ExampleKind, number>>({
@@ -48,6 +68,10 @@ export function SummaryView({
     showcaseDecks.find((deck) => deck.kind === activeShowcaseKind) ?? showcaseDecks[0] ?? null;
   const activeIndex = activeDeck ? showcaseIndices[activeDeck.kind] % activeDeck.entries.length : 0;
   const activeEntry = activeDeck ? activeDeck.entries[activeIndex] : null;
+  const totalItemCount = Object.values(summary.virtues).reduce(
+    (count, current) => count + current.itemCount,
+    0,
+  );
 
   const advanceShowcase = () => {
     if (!activeDeck || activeDeck.entries.length < 2) return;
@@ -69,18 +93,50 @@ export function SummaryView({
   };
 
   return (
-    <section className="mx-auto grid w-full max-w-[1200px] gap-5">
-      <article className={[PANEL_CLASS, "overflow-hidden"].join(" ")}>
-        <section className="px-6 py-6 md:px-8 md:py-7">
-          <div className="grid gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
-              Benchmark
+    <section className="mx-auto grid w-full max-w-[1380px] gap-8">
+      <section className="grid gap-8 px-2 pt-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(19rem,0.85fr)] xl:items-start">
+        <div className="grid gap-4">
+          <h2 className="max-w-[13ch] text-balance font-display text-[3rem] leading-[0.96] md:text-[4rem] xl:text-[4.5rem]">
+            Can a model choose virtue under pressure?
+          </h2>
+          <div className="grid max-w-[62ch] gap-4 text-[17px] leading-8 text-stone-800">
+            <p>
+              VirtueBench is not about catching overt evil. Labs already optimize heavily for that.
+              It asks whether a model still chooses the good when comfort, safety, and
+              self-preservation pull the other way.
             </p>
-            <h2 className="max-w-[20ch] text-balance font-display text-[2.4rem] leading-none md:text-[3.05rem]">
-              What VirtueBench asks
-            </h2>
-            <p className="max-w-[70ch] text-[15px] leading-7 text-stone-800">
-              {virtueSummary.itemCount} questions for {titleCase(virtue)}. Each item forces an{" "}
+            <p>
+              It contains {totalItemCount} paired scenarios across Prudence, Justice, Courage, and
+              Temperance, drawing on Ambrose, Augustine, and Aquinas.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-x-8 gap-y-4 text-[14px] leading-6 text-stone-800 sm:grid-cols-2 xl:grid-cols-1">
+          <div className="border-t border-line/70 pt-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+              Role
+            </p>
+            <p className="mt-1">
+              The model answers as the decision-maker, not as an outside judge describing what is
+              good in theory.
+            </p>
+          </div>
+          <div className="border-t border-line/70 pt-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+              Stakes
+            </p>
+            <p className="mt-1">
+              The virtuous option can carry real costs: money, reputation, safety, comfort, or
+              future opportunity.
+            </p>
+          </div>
+          <div className="border-t border-line/70 pt-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+              Output
+            </p>
+            <p className="mt-1">
+              The model must make an{" "}
               <span className="inline-flex items-center gap-1 align-baseline">
                 <span>A/B choice</span>
                 <InfoPopover
@@ -92,109 +148,85 @@ export function SummaryView({
                   not driven by answer position.
                 </InfoPopover>
               </span>{" "}
-              between the costly virtuous act and the tempting alternative already stocked with
-              practical excuses. The model answers what it would actually do, then gives one
-              sentence explaining why.
+              and give one sentence explaining why.
             </p>
           </div>
-        </section>
-
-        <ShowcaseBrowser
-          summary={summary}
-          decks={showcaseDecks}
-          activeDeck={activeDeck}
-          activeEntry={activeEntry}
-          activeIndex={activeIndex}
-          activeShowcaseKind={activeShowcaseKind}
-          setActiveShowcaseKind={setActiveShowcaseKind}
-          retreatShowcase={retreatShowcase}
-          advanceShowcase={advanceShowcase}
-          onInspectItem={onInspectItem}
-        />
-      </article>
-
-      <section className="grid gap-3 px-1">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-stone-900">
-            Flagged Items
-          </h3>
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-2">
-          <QuickList
-            title="Shared flips"
-            count={virtueSummary.featuredSharedFlipCount}
-            subtitle="Featured set misses under actual, recovers under resist."
-            items={sharedFlipItems}
-            onInspectItem={onInspectItem}
-          />
-
-          <QuickList
-            title="Stable failures"
-            count={virtueSummary.featuredStableFailureCount}
-            subtitle="Featured set still misses under resist."
-            items={stableFailureItems}
-            onInspectItem={onInspectItem}
-          />
+          <div className="border-t border-line/70 pt-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+              Temptation
+            </p>
+            <p className="mt-1">
+              The tempting answer is written to sound prudent, responsible, and self-protective, not
+              openly vicious.
+            </p>
+          </div>
         </div>
       </section>
-    </section>
-  );
-}
 
-function QuickList({
-  title,
-  count,
-  subtitle,
-  items,
-  onInspectItem,
-}: {
-  title: string;
-  count: number;
-  subtitle: string;
-  items: VirtueItem[];
-  onInspectItem: (itemId: number) => void;
-}) {
-  return (
-    <section className="grid gap-2 rounded-[20px] border border-line/80 bg-white/55 px-4 py-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="grid gap-1">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-stone-900">
-            {title}
-          </h3>
-          <p className="text-xs leading-5 text-ink-soft">{subtitle}</p>
+      <section className="grid gap-4 px-2">
+        <div className="grid max-w-[66ch] gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
+            The Four Virtues
+          </p>
+          <p className="text-[15px] leading-7 text-stone-800">
+            Virtue is a golden mean: not too little, not too much, but rightly ordered character
+            over time.
+          </p>
         </div>
-        <div className="rounded-full border border-line bg-white/80 px-2.5 py-1 text-[12px] font-medium tabular-nums text-stone-700">
-          {count}
-        </div>
-      </div>
 
-      <div className="grid">
-        {items.length ? (
-          items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onInspectItem(item.id)}
-              className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 border-t border-line/70 py-2.5 text-left transition-colors first:border-t-0 hover:text-stone-900"
-            >
-              <div className="rounded-full bg-[#f3eee4] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-ink-soft">
-                {item.id}
-              </div>
-              <div className="line-clamp-1 pt-0.5 text-sm leading-5 text-stone-900">
-                {item.source}
-              </div>
-              <div className="pt-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-accent">
-                Open
-              </div>
-            </button>
-          ))
-        ) : (
-          <div className="rounded-[16px] border border-dashed border-line bg-white/60 px-4 py-5 text-sm text-ink-soft">
-            Nothing flagged here.
-          </div>
-        )}
-      </div>
+        <div className="grid gap-x-8 gap-y-4 md:grid-cols-2 xl:grid-cols-4">
+          {VIRTUE_PRIMER.map((entry) => {
+            const active = entry.name.toLowerCase() === virtue;
+            const entryVirtue = entry.name.toLowerCase();
+
+            return (
+              <button
+                key={entry.name}
+                type="button"
+                onClick={() => onSelectVirtue(entryVirtue)}
+                className={[
+                  "min-h-24 border-t pt-3 text-left transition-[transform,color,background-color,border-color] hover:bg-white/35 active:scale-[0.99]",
+                  active ? "border-accent/45" : "border-line/70",
+                ].join(" ")}
+              >
+                <div className="flex items-center gap-2">
+                  <p
+                    className={[
+                      "text-[11px] font-semibold uppercase tracking-[0.12em]",
+                      active ? "text-accent" : "text-ink-soft",
+                    ].join(" ")}
+                  >
+                    {entry.name}
+                  </p>
+                  {active ? (
+                    <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent">
+                      Current
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-[15px] font-medium leading-6 text-stone-900">
+                  {entry.summary}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-stone-700">{entry.mean}</p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <ShowcaseBrowser
+        summary={summary}
+        virtueSummary={virtueSummary}
+        decks={showcaseDecks}
+        activeDeck={activeDeck}
+        activeEntry={activeEntry}
+        activeIndex={activeIndex}
+        activeShowcaseKind={activeShowcaseKind}
+        setActiveShowcaseKind={setActiveShowcaseKind}
+        retreatShowcase={retreatShowcase}
+        advanceShowcase={advanceShowcase}
+        onInspectItem={onInspectItem}
+      />
     </section>
   );
 }
@@ -247,6 +279,7 @@ function getShowcaseModelOptions(item: VirtueItem, kind: ExampleKind) {
 
 function ShowcaseBrowser({
   summary,
+  virtueSummary,
   decks,
   activeDeck,
   activeEntry,
@@ -258,6 +291,7 @@ function ShowcaseBrowser({
   onInspectItem,
 }: {
   summary: Summary;
+  virtueSummary: SummaryVirtue;
   decks: ShowcaseDeck[];
   activeDeck: ShowcaseDeck | null;
   activeEntry: ShowcaseDeck["entries"][number] | null;
@@ -297,57 +331,77 @@ function ShowcaseBrowser({
   ];
 
   return (
-    <section className="border-t border-line/80 px-5 py-4">
-      <div className="-mx-1 overflow-x-auto pb-1">
-        <div className="inline-flex min-w-max rounded-[22px] border border-line bg-white/70 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-          {decks.map((deck) => {
-            const active = deck.kind === activeShowcaseKind;
-            return (
-              <button
-                key={deck.kind}
-                type="button"
-                onClick={() => setActiveShowcaseKind(deck.kind)}
-                className={[
-                  "inline-flex min-h-10 items-center justify-center rounded-full px-4 py-1.5 text-[13px] whitespace-nowrap transition-[transform,background-color,color] active:scale-[0.98]",
-                  active
-                    ? "bg-accent text-white shadow-[0_8px_18px_rgba(22,61,52,0.16)]"
-                    : "text-stone-700 hover:bg-accent-soft/35",
-                ].join(" ")}
-              >
-                {deck.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line/70 pb-3">
-          <div className="grid gap-1">
-            <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
-              <span>Item {item.id}</span>
-              <span className="rounded-full bg-white/82 px-2 py-0.5 text-[10px] tabular-nums text-ink-soft ring-1 ring-line">
-                {activeIndex + 1} of {activeDeck.entries.length}
-              </span>
-              <InfoPopover
-                label={`Show raw prompt for item ${item.id}`}
-                widthClass="w-[min(24rem,calc(100vw-3rem))]"
-                align="left"
-              >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-accent">
-                  Raw prompt
-                </p>
-                <pre className="mt-3 whitespace-pre-wrap text-xs leading-5 text-stone-800">
-                  {buildPromptText(item)}
-                </pre>
-              </InfoPopover>
+    <article className={[PANEL_CLASS, "overflow-hidden"].join(" ")}>
+      <section className="mx-auto max-w-[1160px] px-5 py-5 md:px-7 md:py-6">
+        <div className="grid gap-4 border-b border-line/70 pb-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+          <div className="grid gap-3">
+            <div className="-mx-1 overflow-x-auto pb-1">
+              <div className="inline-flex min-w-max rounded-[22px] border border-line bg-white/70 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                {decks.map((deck) => {
+                  const active = deck.kind === activeShowcaseKind;
+                  const count =
+                    deck.kind === "sharedFlip"
+                      ? virtueSummary.featuredSharedFlipCount
+                      : deck.kind === "stableFailure"
+                        ? virtueSummary.featuredStableFailureCount
+                        : null;
+                  return (
+                    <button
+                      key={deck.kind}
+                      type="button"
+                      onClick={() => setActiveShowcaseKind(deck.kind)}
+                      className={[
+                        "inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 py-1.5 text-[13px] whitespace-nowrap transition-[transform,background-color,color] active:scale-[0.98]",
+                        active
+                          ? "bg-accent text-white shadow-[0_8px_18px_rgba(22,61,52,0.16)]"
+                          : "text-stone-700 hover:bg-accent-soft/35",
+                      ].join(" ")}
+                    >
+                      <span>{deck.label}</span>
+                      {count != null ? (
+                        <span
+                          className={[
+                            "rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums",
+                            active
+                              ? "bg-white/18 text-white"
+                              : "bg-white/82 text-ink-soft ring-1 ring-line",
+                          ].join(" ")}
+                        >
+                          {count}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <h3 className="max-w-[34rem] text-balance text-lg font-medium leading-7 text-stone-900">
-              {item.source}
-            </h3>
+
+            <div className="grid min-h-[4.75rem] gap-1 md:min-h-[5.25rem]">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+                <span>Item {item.id}</span>
+                <span className="rounded-full bg-white/82 px-2 py-0.5 text-[10px] tabular-nums text-ink-soft ring-1 ring-line">
+                  {activeIndex + 1} of {activeDeck.entries.length}
+                </span>
+                <InfoPopover
+                  label={`Show raw prompt for item ${item.id}`}
+                  widthClass="w-[min(24rem,calc(100vw-3rem))]"
+                  align="left"
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-accent">
+                    Raw prompt
+                  </p>
+                  <pre className="mt-3 whitespace-pre-wrap text-xs leading-5 text-stone-800">
+                    {buildPromptText(item)}
+                  </pre>
+                </InfoPopover>
+              </div>
+              <h3 className="max-w-[32rem] text-balance text-[1.35rem] font-medium leading-8 text-stone-900 md:text-[1.55rem]">
+                {item.source}
+              </h3>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 md:pt-1">
             {activeDeck.entries.length > 1 ? (
               <>
                 <button
@@ -404,66 +458,75 @@ function ShowcaseBrowser({
           </div>
         </div>
 
-        <section className="overflow-hidden rounded-[20px] border border-line/80 bg-white/78">
-          {options.map((option) => (
-            <div
-              key={option.key}
-              className={[
-                "flex gap-3 px-4 py-3 first:border-t-0",
-                option.key === "B" ? "border-t border-line/70" : "",
-                option.virtuous ? "bg-ok-soft/30" : "",
-              ].join(" ")}
-            >
-              <span
-                className={[
-                  "mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                  option.virtuous
-                    ? "bg-ok text-white"
-                    : "border border-line bg-white text-stone-700",
-                ].join(" ")}
-              >
-                {option.key}
-              </span>
-              <div className="grid max-w-[72ch] gap-1">
-                <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ink-soft">
-                  {option.virtuous ? "Virtuous choice" : "Tempting choice"}
-                </span>
-                <p className="text-sm leading-6 text-stone-800">{option.text}</p>
-              </div>
+        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(19rem,24rem)] xl:items-stretch">
+          <section className="overflow-hidden rounded-[22px] border border-line/80 bg-white/74 xl:grid xl:min-h-[20.5rem] xl:grid-rows-[auto_minmax(0,1fr)]">
+            <div className="border-b border-line/70 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+                Scenario
+              </p>
             </div>
-          ))}
-
-          <div className="border-t border-line/70 px-4 py-3">
-            <div className="mt-3 grid">
-              {displayResponses.map(({ frame, response }, index) => (
+            <div className="min-h-0 xl:overflow-auto">
+              {options.map((option) => (
                 <div
-                  key={`${selectedModel}-${frame}-${response.answer ?? "none"}`}
-                  className={[index ? "border-t border-line/70 pt-3" : "", "pb-3 last:pb-0"].join(
-                    " ",
-                  )}
+                  key={option.key}
+                  className={[
+                    "flex gap-3 px-4 py-3 first:border-t-0",
+                    option.key === "B" ? "border-t border-line/70" : "",
+                    option.virtuous ? "bg-ok-soft/30" : "",
+                  ].join(" ")}
                 >
-                  <div className="flex flex-wrap items-center gap-2">
-                    {index === 0 ? (
-                      modelOptions.length > 1 ? (
-                        <select
-                          value={selectedModel}
-                          onChange={(event) => setSelectedModel(event.target.value)}
-                          aria-label="Choose model for example answer"
-                          className="h-8 max-w-[12rem] rounded-full border border-line bg-white px-3 text-[13px] font-medium text-stone-900 outline-none transition-[border-color,box-shadow] focus:border-accent/45 focus:shadow-[0_0_0_4px_rgba(22,61,52,0.08)]"
-                        >
-                          {modelOptions.map((entry) => (
-                            <option key={entry.model} value={entry.model}>
-                              {entry.model}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <p className="text-sm font-medium text-stone-900">
-                          {activeModelEntry?.model ?? model}
-                        </p>
-                      )
-                    ) : null}
+                  <span
+                    className={[
+                      "mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                      option.virtuous
+                        ? "bg-ok text-white"
+                        : "border border-line bg-white text-stone-700",
+                    ].join(" ")}
+                  >
+                    {option.key}
+                  </span>
+                  <div className="grid max-w-[46ch] gap-1">
+                    <span className="text-xs font-semibold uppercase tracking-[0.1em] text-ink-soft">
+                      {option.virtuous ? "Virtuous choice" : "Tempting choice"}
+                    </span>
+                    <p className="text-sm leading-6 text-stone-800">{option.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
 
+          <section className="border-t border-line/70 pt-4 xl:grid xl:min-h-[20.5rem] xl:grid-rows-[auto_minmax(0,1fr)] xl:border-t-0 xl:border-l xl:pl-5">
+            <div className="flex flex-wrap items-center gap-2">
+              {modelOptions.length > 1 ? (
+                <select
+                  value={selectedModel}
+                  onChange={(event) => setSelectedModel(event.target.value)}
+                  aria-label="Choose model for example answer"
+                  className="h-8 max-w-[12rem] rounded-full border border-line bg-white px-3 text-[13px] font-medium text-stone-900 outline-none transition-[border-color,box-shadow] focus:border-accent/45 focus:shadow-[0_0_0_4px_rgba(22,61,52,0.08)]"
+                >
+                  {modelOptions.map((entry) => (
+                    <option key={entry.model} value={entry.model}>
+                      {entry.model}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-sm font-medium text-stone-900">
+                  {activeModelEntry?.model ?? model}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 min-h-0 xl:overflow-auto xl:pr-1">
+              <div className="grid gap-3 content-start">
+                {displayResponses.map(({ frame, response }, index) => (
+                  <div
+                    key={`${selectedModel}-${frame}-${response.answer ?? "none"}`}
+                    className={[index ? "border-t border-line/70 pt-3" : "", "pb-3 last:pb-0"].join(
+                      " ",
+                    )}
+                  >
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <span className="rounded-full border border-line bg-white px-3 py-1.5 font-medium text-stone-700">
                         {summary.frames[frame].label}
@@ -477,17 +540,17 @@ function ShowcaseBrowser({
                         {response.answer} {response.correct ? "correct" : "wrong"}
                       </span>
                     </div>
-                  </div>
 
-                  <p className="mt-2 max-w-[72ch] text-sm leading-6 text-stone-800">
-                    {response.rationale}
-                  </p>
-                </div>
-              ))}
+                    <p className="mt-3 max-w-[32ch] text-sm leading-7 text-stone-800">
+                      {response.rationale}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        </section>
-      </div>
-    </section>
+          </section>
+        </div>
+      </section>
+    </article>
   );
 }

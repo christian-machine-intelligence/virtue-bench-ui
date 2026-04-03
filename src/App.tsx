@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import {
   buildRouteSearch,
@@ -13,8 +13,6 @@ import {
   getDetailModels,
   getFeaturedModelsForVirtue,
   getSelectedItem,
-  getSharedFlipItems,
-  getStableFailureItems,
   PRESETS,
   readRouteFromLocation,
   VIRTUE_ORDER,
@@ -49,7 +47,7 @@ function LoadingScreen() {
 export default function App() {
   const [route, setRoute] = useState<RouteState>(() => readRouteFromLocation());
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [virtueData, setVirtueData] = useState<VirtuePayload | null>(null);
+  const [virtueDataByVirtue, setVirtueDataByVirtue] = useState<Record<string, VirtuePayload>>({});
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
@@ -57,33 +55,52 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    fetch("./data/summary.json")
-      .then((res) => res.json())
-      .then((data: Summary) => {
-        if (!cancelled) setSummary(data);
-      })
-      .catch((error) => console.error(error));
+    const loadSummaryAndVirtues = async () => {
+      const [summaryData, virtuePayloads] = await Promise.all([
+        fetch("./data/summary.json").then((res) => res.json() as Promise<Summary>),
+        Promise.all(
+          VIRTUE_ORDER.map((virtue) =>
+            fetch(`./data/virtues/${virtue}.json`)
+              .then((res) => (res.ok ? (res.json() as Promise<VirtuePayload>) : null))
+              .catch(() => null),
+          ),
+        ),
+      ]);
+
+      if (cancelled) return;
+
+      setSummary(summaryData);
+      setVirtueDataByVirtue(
+        Object.fromEntries(
+          virtuePayloads
+            .filter((payload): payload is VirtuePayload => Boolean(payload))
+            .map((payload) => [payload.virtue, payload]),
+        ),
+      );
+    };
+
+    loadSummaryAndVirtues().catch((error) => console.error(error));
 
     return () => {
       cancelled = true;
     };
   }, []);
 
+  const virtueData = virtueDataByVirtue[route.virtue] ?? null;
+
   useEffect(() => {
-    let cancelled = false;
-    setVirtueData(null);
+    if (!summary || virtueData) return;
 
     fetch(`./data/virtues/${route.virtue}.json`)
       .then((res) => res.json())
       .then((data: VirtuePayload) => {
-        if (!cancelled) setVirtueData(data);
+        setVirtueDataByVirtue((current) => ({
+          ...current,
+          [data.virtue]: data,
+        }));
       })
       .catch((error) => console.error(error));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [route.virtue]);
+  }, [summary, route.virtue, virtueData]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -99,16 +116,18 @@ export default function App() {
   }, []);
 
   const navigate = (nextRoute: RouteState) => {
-    setRoute((current) => {
-      const currentSearch = buildRouteSearch(current);
-      const nextSearch = buildRouteSearch(nextRoute);
-      if (currentSearch === nextSearch) return current;
+    startTransition(() => {
+      setRoute((current) => {
+        const currentSearch = buildRouteSearch(current);
+        const nextSearch = buildRouteSearch(nextRoute);
+        if (currentSearch === nextSearch) return current;
 
-      if (typeof window !== "undefined" && window.location.search !== nextSearch) {
-        window.history.pushState(null, "", `${window.location.pathname}${nextSearch}`);
-      }
+        if (typeof window !== "undefined" && window.location.search !== nextSearch) {
+          window.history.pushState(null, "", `${window.location.pathname}${nextSearch}`);
+        }
 
-      return nextRoute;
+        return nextRoute;
+      });
     });
   };
 
@@ -202,7 +221,7 @@ export default function App() {
     return normalizeViewerDataset(summary, virtueData);
   }, [summary, virtueData, route.virtue]);
 
-  if (!summary || !virtueData || virtueData.virtue !== route.virtue || !dataset) {
+  if (!summary || !virtueData || !dataset) {
     return <LoadingScreen />;
   }
 
@@ -228,8 +247,6 @@ export default function App() {
   const selectedItem = getSelectedItem(virtueData.items, filteredItems, inspectItemId);
   const detailFrames = getDetailFrames(frames, selectedItem, visibleModels);
   const detailModels = getDetailModels(selectedItem, visibleModels);
-  const sharedFlipItems = getSharedFlipItems(virtueData.items);
-  const stableFailureItems = getStableFailureItems(virtueData.items);
   const showcaseDecks = buildShowcaseDecks(
     route.virtue,
     virtueData.items,
@@ -336,13 +353,15 @@ export default function App() {
               />
             </div>
 
-            <div className="ml-auto">
-              <VirtueTabs
-                virtue={route.virtue}
-                setVirtue={setRoutedVirtue}
-                options={virtueOptions}
-              />
-            </div>
+            {route.viewMode === "summary" ? null : (
+              <div className="ml-auto">
+                <VirtueTabs
+                  virtue={route.virtue}
+                  setVirtue={setRoutedVirtue}
+                  options={virtueOptions}
+                />
+              </div>
+            )}
           </div>
         </header>
 
@@ -352,9 +371,8 @@ export default function App() {
             summary={summary}
             virtueSummary={virtueSummary}
             showcaseDecks={showcaseDecks}
-            sharedFlipItems={sharedFlipItems}
-            stableFailureItems={stableFailureItems}
             onInspectItem={inspectItem}
+            onSelectVirtue={setRoutedVirtue}
           />
         ) : route.viewMode === "scores" ? (
           <ScoresView summary={summary} dataset={dataset} onOpenModel={openModel} />
