@@ -180,9 +180,9 @@ export function SummaryView({
       </section>
 
       <section className="px-2">
-        <div className="grid gap-5 border-t border-line/70 pt-5 md:pt-6 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] xl:gap-8">
-          <div className="grid max-w-[32ch] gap-2 xl:pt-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
+        <div className="grid gap-5 border-t border-line/70 pt-5 md:pt-6 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] xl:items-stretch xl:gap-8">
+          <div className="grid max-w-[32ch] gap-2.5 xl:content-center">
+            <p className="text-[14px] font-semibold uppercase tracking-[0.14em] text-accent md:text-[15px]">
               The Four Virtues
             </p>
             <p className="text-[15px] leading-7 text-stone-800">
@@ -190,7 +190,7 @@ export function SummaryView({
             </p>
           </div>
 
-          <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4 xl:items-stretch">
             {VIRTUE_PRIMER.map((entry) => {
               const active = entry.name.toLowerCase() === virtue;
               const entryVirtue = entry.name.toLowerCase();
@@ -201,14 +201,14 @@ export function SummaryView({
                   type="button"
                   onClick={() => onSelectVirtue(entryVirtue)}
                   className={[
-                    "min-h-[6.75rem] rounded-[18px] px-4 py-3 text-left transition-[transform,background-color,border-color,color] active:scale-[0.99]",
+                    "h-full min-h-[6.75rem] rounded-[18px] px-4 py-3 text-left transition-[transform,background-color,border-color,color] active:scale-[0.99]",
                     active
                       ? "border border-line/80 bg-white/48"
                       : "border border-transparent bg-white/12 hover:border-line/60 hover:bg-white/24",
                   ].join(" ")}
                 >
-                  <div className="grid gap-3">
-                    <div className="flex items-center gap-2">
+                  <div className="grid h-full grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
+                    <div className="flex min-h-5 items-start gap-2">
                       <p
                         className={[
                           "text-[11px] font-semibold uppercase tracking-[0.12em]",
@@ -226,11 +226,13 @@ export function SummaryView({
 
                     <div className={["h-px w-14", active ? "bg-accent/35" : "bg-line"].join(" ")} />
 
-                    <div>
+                    <div className="grid content-start gap-1">
                       <p className="text-[15px] font-medium leading-6 text-stone-900">
                         {entry.summary}
                       </p>
-                      <p className="mt-1 text-sm leading-6 text-stone-700">{entry.mean}</p>
+                      <p className="min-h-[3rem] text-sm leading-6 text-stone-700">
+                        {entry.mean}
+                      </p>
                     </div>
                   </div>
                 </button>
@@ -464,8 +466,8 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
           <FrameShiftPanel summary={summary} responses={displayResponses} />
         ) : null}
 
-        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(19rem,24rem)] xl:items-stretch">
-          <section className="xl:grid xl:min-h-[20.5rem] xl:border-r xl:border-line/70 xl:pr-5">
+        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(19rem,24rem)] xl:items-stretch xl:gap-0">
+          <section className="xl:grid xl:min-h-[20.5rem] xl:pr-5">
             <div className="min-h-0 xl:overflow-auto">
               <div className="grid divide-y divide-line/70">
                 {options.map((option) => (
@@ -523,30 +525,14 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
             <div className="mt-4 min-h-0 xl:overflow-auto xl:pr-1">
               <div className="grid gap-3 content-start">
                 {displayResponses.map(({ frame, response }, index) => (
-                  <div
+                  <ShowcaseResponseCard
                     key={`${selectedModel}-${frame}-${response.answer ?? "none"}`}
-                    className={[index ? "border-t border-line/70 pt-3" : "", "pb-3 last:pb-0"].join(
-                      " ",
-                    )}
-                  >
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="rounded-full border border-line bg-white px-3 py-1.5 font-medium text-stone-700">
-                        {summary.frames[frame].label}
-                      </span>
-                      <span
-                        className={[
-                          "rounded-full px-3 py-1.5 font-semibold",
-                          response.correct ? "bg-ok-soft text-ok" : "bg-danger-soft text-danger",
-                        ].join(" ")}
-                      >
-                        {response.answer} {response.correct ? "correct" : "wrong"}
-                      </span>
-                    </div>
-
-                    <p className="mt-3 max-w-[32ch] text-sm leading-7 text-stone-800">
-                      {response.rationale}
-                    </p>
-                  </div>
+                    summary={summary}
+                    frame={frame}
+                    response={response}
+                    variant={variant}
+                    separated={index > 0}
+                  />
                 ))}
               </div>
             </div>
@@ -555,6 +541,124 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
       </section>
     </article>
   );
+}
+
+function ShowcaseResponseCard({
+  summary,
+  frame,
+  response,
+  variant,
+  separated,
+}: {
+  summary: Summary;
+  frame: string;
+  response: ShowcaseResponse["response"];
+  variant: "summary" | "method";
+  separated: boolean;
+}) {
+  const hasAnswer = Boolean(response.answer);
+  const answerLabel = response.answer ?? "—";
+  const rationale = formatShowcaseRationale(response.answer, response.rationale);
+  const outcomeLabel = !hasAnswer
+    ? "No clear answer"
+    : response.correct
+      ? "Virtuous choice"
+      : "Tempting choice";
+
+  if (variant === "summary") {
+    const tone = !hasAnswer
+      ? {
+          panel: "border-line bg-white/84",
+          answer: "border border-line bg-white text-stone-700",
+          outcome: "bg-white/90 text-stone-700 ring-1 ring-line/80",
+          divider: "border-line/70",
+        }
+      : response.correct
+        ? {
+            panel: "border-ok/18 bg-ok-soft/22",
+            answer: "bg-ok text-white",
+            outcome: "bg-white/90 text-ok ring-1 ring-ok/12",
+            divider: "border-ok/12",
+          }
+        : {
+            panel: "border-danger/18 bg-danger-soft/20",
+            answer: "bg-danger text-white",
+            outcome: "bg-white/90 text-danger ring-1 ring-danger/12",
+            divider: "border-danger/12",
+          };
+
+    return (
+      <article className={["rounded-[22px] border px-4 py-4 md:px-5", tone.panel].join(" ")}>
+        <div className="flex flex-wrap items-start gap-3">
+          <span
+            className={[
+              "inline-flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
+              tone.answer,
+            ].join(" ")}
+          >
+            {answerLabel}
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="grid gap-0.5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+                  Model answer
+                </p>
+                <p className="text-[15px] font-medium leading-6 text-stone-900">
+                  {hasAnswer ? `Chose ${answerLabel}` : "No parse"}
+                </p>
+              </div>
+              <span
+                className={[
+                  "rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em]",
+                  tone.outcome,
+                ].join(" ")}
+              >
+                {outcomeLabel}
+              </span>
+            </div>
+
+            <div className={["mt-4 border-t pt-4", tone.divider].join(" ")}>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
+                Why
+              </p>
+              <p className="mt-2 max-w-[32ch] text-[15px] leading-7 text-stone-800">
+                {rationale}
+              </p>
+            </div>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <div className={[separated ? "border-t border-line/70 pt-3" : "", "pb-3 last:pb-0"].join(" ")}>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="rounded-full border border-line bg-white px-3 py-1.5 font-medium text-stone-700">
+          {summary.frames[frame].label}
+        </span>
+        <span
+          className={[
+            "rounded-full px-3 py-1.5 font-semibold",
+            response.correct ? "bg-ok-soft text-ok" : "bg-danger-soft text-danger",
+          ].join(" ")}
+        >
+          {response.answer} {response.correct ? "correct" : "wrong"}
+        </span>
+      </div>
+
+      <p className="mt-3 max-w-[32ch] text-sm leading-7 text-stone-800">{rationale}</p>
+    </div>
+  );
+}
+
+function formatShowcaseRationale(answer: string | null, rationale: string) {
+  const trimmed = rationale.trim();
+  if (!trimmed || !answer) return trimmed;
+
+  return trimmed.replace(new RegExp(`^${answer}\\s*[—–:-]\\s*`, "i"), "");
 }
 
 function FrameShiftPanel({
