@@ -1,8 +1,10 @@
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import {
   buildRouteSearch,
   buildShowcaseDecks,
+  DEFAULT_MODEL_RESULT,
+  DEFAULT_PRESET,
   filterItems,
   formatGeneratedAt,
   frameSort,
@@ -20,11 +22,17 @@ import {
   type RouteState,
   type Summary,
   type VirtuePayload,
-  type ViewMode,
 } from "./viewer/model";
+import {
+  getDatasetSelectedItem,
+  getModelQueueItems,
+  normalizeViewerDataset,
+} from "./viewer/dataset";
 import { PageTabs, VirtueTabs } from "./viewer/chrome";
-import { OverviewView } from "./viewer/OverviewView";
+import { SummaryView } from "./viewer/OverviewView";
+import { ScoresView } from "./viewer/ScoresView";
 import { InspectView } from "./viewer/InspectView";
+import { ModelView } from "./viewer/ModelView";
 
 function LoadingScreen() {
   return (
@@ -90,52 +98,111 @@ export default function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const pushRoute = (next: Partial<RouteState>) => {
+  const navigate = (nextRoute: RouteState) => {
     setRoute((current) => {
-      const candidate = { ...current, ...next };
-      const unchanged =
-        candidate.viewMode === current.viewMode &&
-        candidate.virtue === current.virtue &&
-        candidate.itemId === current.itemId &&
-        candidate.preset === current.preset;
+      const currentSearch = buildRouteSearch(current);
+      const nextSearch = buildRouteSearch(nextRoute);
+      if (currentSearch === nextSearch) return current;
 
-      if (unchanged) return current;
-
-      if (typeof window !== "undefined") {
-        const search = buildRouteSearch(candidate);
-        if (window.location.search !== search) {
-          window.history.pushState(null, "", `${window.location.pathname}${search}`);
-        }
+      if (typeof window !== "undefined" && window.location.search !== nextSearch) {
+        window.history.pushState(null, "", `${window.location.pathname}${nextSearch}`);
       }
 
-      return candidate;
+      return nextRoute;
     });
   };
 
-  const setRoutedViewMode = (viewMode: ViewMode) => {
-    pushRoute({ viewMode });
+  const setRoutedViewMode = (viewMode: "summary" | "scores" | "inspect") => {
+    if (viewMode === "inspect") {
+      navigate({
+        viewMode: "inspect",
+        virtue: route.virtue,
+        preset: route.viewMode === "inspect" ? route.preset : DEFAULT_PRESET,
+        itemId: route.viewMode === "inspect" ? route.itemId : null,
+      });
+      return;
+    }
+
+    navigate({
+      viewMode,
+      virtue: route.virtue,
+    });
   };
 
   const setRoutedVirtue = (virtue: string) => {
     setSearch("");
     setSelectedModels([]);
-    pushRoute({ virtue, itemId: null });
+
+    if (route.viewMode === "inspect") {
+      navigate({
+        viewMode: "inspect",
+        virtue,
+        preset: DEFAULT_PRESET,
+        itemId: null,
+      });
+      return;
+    }
+
+    if (route.viewMode === "model") {
+      const modelStillExists = summary?.models.some(
+        (model) => model.rawId === route.modelId && model.virtues.includes(virtue),
+      );
+
+      if (modelStillExists) {
+        navigate({
+          viewMode: "model",
+          virtue,
+          modelId: route.modelId,
+          frame: route.frame,
+          result: route.result,
+          itemId: null,
+        });
+      } else {
+        navigate({ viewMode: "scores", virtue });
+      }
+      return;
+    }
+
+    navigate({
+      viewMode: route.viewMode,
+      virtue,
+    });
   };
 
   const setRoutedPreset = (preset: Preset) => {
-    pushRoute({ viewMode: "inspect", preset });
+    navigate({
+      viewMode: "inspect",
+      virtue: route.virtue,
+      preset,
+      itemId: route.viewMode === "inspect" ? route.itemId : null,
+    });
   };
 
   const setRoutedSelectedItemId = (itemId: number | null) => {
-    pushRoute({ viewMode: "inspect", itemId });
+    navigate({
+      viewMode: "inspect",
+      virtue: route.virtue,
+      preset: route.viewMode === "inspect" ? route.preset : DEFAULT_PRESET,
+      itemId,
+    });
   };
 
   const inspectItem = (itemId: number) => {
     setSearch("");
-    pushRoute({ viewMode: "inspect", itemId, preset: "all" });
+    navigate({
+      viewMode: "inspect",
+      virtue: route.virtue,
+      itemId,
+      preset: "all",
+    });
   };
 
-  if (!summary || !virtueData || virtueData.virtue !== route.virtue) {
+  const dataset = useMemo(() => {
+    if (!summary || !virtueData || virtueData.virtue !== route.virtue) return null;
+    return normalizeViewerDataset(summary, virtueData);
+  }, [summary, virtueData, route.virtue]);
+
+  if (!summary || !virtueData || virtueData.virtue !== route.virtue || !dataset) {
     return <LoadingScreen />;
   }
 
@@ -150,13 +217,15 @@ export default function App() {
   const visibleModels = selectedModels.length
     ? availableModelNames.filter((model) => selectedModels.includes(model))
     : defaultVisibleModels;
+  const inspectPreset = route.viewMode === "inspect" ? route.preset : DEFAULT_PRESET;
+  const inspectItemId = route.viewMode === "inspect" ? route.itemId : null;
   const virtueSummary = summary.virtues[route.virtue];
   const frames = Object.keys(summary.frames).sort(frameSort);
-  const presetMeta = PRESETS.find((entry) => entry.value === route.preset) ?? PRESETS[0];
+  const presetMeta = PRESETS.find((entry) => entry.value === inspectPreset) ?? PRESETS[0];
   const virtueOptions = VIRTUE_ORDER.filter((entry) => entry in summary.virtues);
   const searchParts = deferredSearch ? deferredSearch.split(/\s+/).filter(Boolean) : [];
-  const filteredItems = filterItems(virtueData.items, visibleModels, route.preset, searchParts);
-  const selectedItem = getSelectedItem(virtueData.items, filteredItems, route.itemId);
+  const filteredItems = filterItems(virtueData.items, visibleModels, inspectPreset, searchParts);
+  const selectedItem = getSelectedItem(virtueData.items, filteredItems, inspectItemId);
   const detailFrames = getDetailFrames(frames, selectedItem, visibleModels);
   const detailModels = getDetailModels(selectedItem, visibleModels);
   const sharedFlipItems = getSharedFlipItems(virtueData.items);
@@ -167,6 +236,18 @@ export default function App() {
     getFeaturedModelsForVirtue(summary, route.virtue),
     availableModelNames,
   );
+  const activeModelId =
+    route.viewMode === "model" && dataset.modelsById[route.modelId]
+      ? route.modelId
+      : (dataset.models[0]?.id ?? "");
+  const modelFilteredItems =
+    route.viewMode === "model" && activeModelId
+      ? getModelQueueItems(dataset, activeModelId, route.frame, route.result, searchParts)
+      : [];
+  const modelSelectedItem =
+    route.viewMode === "model"
+      ? getDatasetSelectedItem(dataset.items, modelFilteredItems, route.itemId)
+      : null;
 
   const toggleModel = (model: string) => {
     setSelectedModels((current) => {
@@ -184,6 +265,57 @@ export default function App() {
     });
   };
 
+  const openModel = (modelId: string, frame: string | null) => {
+    setSearch("");
+    navigate({
+      viewMode: "model",
+      virtue: route.virtue,
+      modelId,
+      frame,
+      result: DEFAULT_MODEL_RESULT,
+      itemId: null,
+    });
+  };
+
+  const setModelFrame = (frame: string | null) => {
+    if (route.viewMode !== "model") return;
+
+    navigate({
+      ...route,
+      frame,
+      itemId: null,
+    });
+  };
+
+  const setModelResult = (result: "wrong" | "correct" | "all") => {
+    if (route.viewMode !== "model") return;
+
+    navigate({
+      ...route,
+      result,
+      itemId: null,
+    });
+  };
+
+  const setModelId = (modelId: string) => {
+    if (route.viewMode !== "model") return;
+
+    navigate({
+      ...route,
+      modelId,
+      itemId: null,
+    });
+  };
+
+  const setModelSelectedItemId = (itemId: number | null) => {
+    if (route.viewMode !== "model") return;
+
+    navigate({
+      ...route,
+      itemId,
+    });
+  };
+
   return (
     <main className="min-h-screen px-4 py-4 text-stone-900 md:px-6 xl:py-5">
       <div className="mx-auto max-w-[1760px] space-y-4">
@@ -198,7 +330,10 @@ export default function App() {
                   Viewer
                 </h1>
               </div>
-              <PageTabs viewMode={route.viewMode} setViewMode={setRoutedViewMode} />
+              <PageTabs
+                activeView={route.viewMode === "model" ? "scores" : route.viewMode}
+                setViewMode={setRoutedViewMode}
+              />
             </div>
 
             <div className="ml-auto">
@@ -211,19 +346,19 @@ export default function App() {
           </div>
         </header>
 
-        {route.viewMode === "overview" ? (
-          <OverviewView
+        {route.viewMode === "summary" ? (
+          <SummaryView
             virtue={route.virtue}
             summary={summary}
             virtueSummary={virtueSummary}
-            availableModels={availableModels}
-            frames={frames}
             showcaseDecks={showcaseDecks}
             sharedFlipItems={sharedFlipItems}
             stableFailureItems={stableFailureItems}
             onInspectItem={inspectItem}
           />
-        ) : (
+        ) : route.viewMode === "scores" ? (
+          <ScoresView summary={summary} dataset={dataset} onOpenModel={openModel} />
+        ) : route.viewMode === "inspect" ? (
           <InspectView
             virtue={route.virtue}
             summary={summary}
@@ -242,6 +377,22 @@ export default function App() {
             setSelectedModels={setSelectedModels}
             setSelectedItemId={setRoutedSelectedItemId}
             setPreset={setRoutedPreset}
+          />
+        ) : (
+          <ModelView
+            dataset={dataset}
+            modelId={activeModelId}
+            frame={route.frame}
+            result={route.result}
+            search={search}
+            setSearch={setSearch}
+            filteredItems={modelFilteredItems}
+            selectedItem={modelSelectedItem}
+            setModelId={setModelId}
+            setFrame={setModelFrame}
+            setResult={setModelResult}
+            setSelectedItemId={setModelSelectedItemId}
+            onInspectItem={inspectItem}
           />
         )}
 

@@ -259,24 +259,25 @@ export function MetaPill({ children, info }: { children: ReactNode; info?: React
 }
 
 export function PageTabs({
-  viewMode,
+  activeView,
   setViewMode,
 }: {
-  viewMode: ViewMode;
-  setViewMode: (view: ViewMode) => void;
+  activeView: "summary" | "scores" | "inspect";
+  setViewMode: (view: Extract<ViewMode, "summary" | "scores" | "inspect">) => void;
 }) {
   return (
     <div className="inline-flex rounded-full border border-line bg-white/70 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
       {[
-        ["overview", "Overview"],
+        ["summary", "Summary"],
+        ["scores", "Scores"],
         ["inspect", "Inspect"],
       ].map(([value, label]) => {
-        const active = value === viewMode;
+        const active = value === activeView;
         return (
           <button
             key={value}
             type="button"
-            onClick={() => setViewMode(value as ViewMode)}
+            onClick={() => setViewMode(value as "summary" | "scores" | "inspect")}
             className={[
               TAB_CLASS,
               active
