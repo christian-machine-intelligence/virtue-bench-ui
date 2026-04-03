@@ -3,10 +3,8 @@ import { createPortal } from "react-dom";
 
 import { framePromptDelta, titleCase, type ViewMode } from "./model";
 
-export const PANEL_CLASS =
-  "rounded-[28px] border border-line bg-paper/95 shadow-[var(--shadow-panel)] backdrop-blur-sm";
-export const RAIL_CLASS =
-  "rounded-[24px] border border-line bg-white/72 shadow-[0_10px_28px_rgba(28,24,20,0.05)] backdrop-blur-sm";
+export const PANEL_CLASS = "rounded-[28px] border border-line bg-paper/95 backdrop-blur-sm";
+export const RAIL_CLASS = "rounded-[24px] border border-line bg-white/72 backdrop-blur-sm";
 export const FIELD_CLASS =
   "h-11 rounded-2xl border border-line bg-white px-3 text-sm text-stone-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] outline-none transition-[border-color,box-shadow,background-color] focus:border-accent/45 focus:shadow-[0_0_0_4px_rgba(22,61,52,0.08)]";
 export const BUTTON_CLASS =
@@ -262,13 +260,14 @@ export function PageTabs({
   activeView,
   setViewMode,
 }: {
-  activeView: "summary" | "scores" | "inspect";
-  setViewMode: (view: Extract<ViewMode, "summary" | "scores" | "inspect">) => void;
+  activeView: "summary" | "method" | "scores" | "inspect";
+  setViewMode: (view: Extract<ViewMode, "summary" | "method" | "scores" | "inspect">) => void;
 }) {
   return (
-    <div className="inline-flex rounded-full border border-line bg-white/70 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+    <div className="inline-flex rounded-full border border-line bg-white/70 p-1">
       {[
         ["summary", "Summary"],
+        ["method", "Method"],
         ["scores", "Scores"],
         ["inspect", "Inspect"],
       ].map(([value, label]) => {
@@ -277,11 +276,11 @@ export function PageTabs({
           <button
             key={value}
             type="button"
-            onClick={() => setViewMode(value as "summary" | "scores" | "inspect")}
+            onClick={() => setViewMode(value as "summary" | "method" | "scores" | "inspect")}
             className={[
               TAB_CLASS,
               active
-                ? "border-accent/20 bg-accent text-white shadow-[0_10px_24px_rgba(22,61,52,0.18)]"
+                ? "border-accent/20 bg-accent text-white"
                 : "border-transparent bg-transparent text-stone-700 hover:bg-accent-soft/45",
             ].join(" ")}
           >
@@ -303,7 +302,7 @@ export function VirtueTabs({
   options: string[];
 }) {
   return (
-    <div className="inline-flex flex-wrap rounded-full border border-line bg-white/70 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+    <div className="inline-flex flex-wrap rounded-full border border-line bg-white/70 p-1">
       {options.map((entry) => {
         const active = entry === virtue;
         return (
@@ -313,9 +312,7 @@ export function VirtueTabs({
             onClick={() => setVirtue(entry)}
             className={[
               "inline-flex min-h-10 items-center justify-center rounded-full px-3 py-1.5 text-sm transition-[transform,background-color,border-color,color] active:scale-[0.97]",
-              active
-                ? "bg-accent text-white shadow-[0_8px_18px_rgba(22,61,52,0.16)]"
-                : "text-stone-700 hover:bg-accent-soft/40",
+              active ? "bg-accent text-white" : "text-stone-700 hover:bg-accent-soft/40",
             ].join(" ")}
           >
             {titleCase(entry)}

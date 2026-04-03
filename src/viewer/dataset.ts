@@ -35,7 +35,6 @@ export type DatasetItem = {
     featuredSharedFlip: boolean;
     featuredStableFailure: boolean;
   };
-  frameStats: Record<string, { available: number; correct: number; wrong: number }>;
   responsesByModel: Record<string, DatasetItemResponse>;
 };
 
@@ -109,6 +108,11 @@ export function normalizeViewerDataset(
   virtuePayload: VirtuePayload,
 ): ViewerDataset {
   const virtueSummary = summary.virtues[virtuePayload.virtue];
+  const modelMetaByDisplay = Object.fromEntries(
+    summary.models
+      .filter((model) => model.virtues.includes(virtuePayload.virtue))
+      .map((model) => [model.display, model]),
+  );
   const models = summary.models
     .filter((model) => model.virtues.includes(virtuePayload.virtue))
     .map((model) => ({
@@ -125,19 +129,24 @@ export function normalizeViewerDataset(
 
   const items = virtuePayload.items.map((item) => {
     const responsesByModel = Object.fromEntries(
-      Object.values(item.responses).map((response) => [
-        response.rawId,
-        {
-          modelId: response.rawId,
-          display: response.display,
-          frames: Object.fromEntries(
-            Object.entries(response.frames).map(([frame, frameResponse]) => [
-              frame,
-              normalizeFrameResponse(frameResponse),
-            ]),
-          ),
-        },
-      ]),
+      Object.entries(item.responses).map(([display, response]) => {
+        const modelMeta = modelMetaByDisplay[display];
+        const modelId = modelMeta?.rawId ?? display;
+
+        return [
+          modelId,
+          {
+            modelId,
+            display,
+            frames: Object.fromEntries(
+              Object.entries(response.frames).map(([frame, frameResponse]) => [
+                frame,
+                normalizeFrameResponse(frameResponse),
+              ]),
+            ),
+          },
+        ];
+      }),
     );
 
     return {
@@ -150,7 +159,6 @@ export function normalizeViewerDataset(
       optionA: item.optionA,
       optionB: item.optionB,
       flags: item.flags,
-      frameStats: item.frameStats,
       responsesByModel,
     } satisfies DatasetItem;
   });

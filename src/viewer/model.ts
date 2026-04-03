@@ -1,19 +1,5 @@
 export type ScoreMap = Record<string, Record<string, number>>;
 
-export type SummaryItem = {
-  id: number;
-  source: string;
-  target: string;
-  actual: { available: number; correct: number; wrong: number };
-  bare: { available: number; correct: number; wrong: number };
-  preserve: { available: number; correct: number; wrong: number };
-  resist: { available: number; correct: number; wrong: number };
-  flags: {
-    featuredSharedFlip: boolean;
-    featuredStableFailure: boolean;
-  };
-};
-
 export type SummaryFrame = {
   label: string;
   kind: string;
@@ -23,9 +9,6 @@ export type SummaryFrame = {
 export type SummaryVirtue = {
   scores: ScoreMap;
   itemCount: number;
-  featuredSharedFlipCount: number;
-  featuredStableFailureCount: number;
-  items: SummaryItem[];
 };
 
 export type SummaryModel = {
@@ -62,25 +45,16 @@ export type VirtueItem = {
     featuredSharedFlip: boolean;
     featuredStableFailure: boolean;
   };
-  frameStats: Record<string, { available: number; correct: number; wrong: number }>;
-  responses: Record<
-    string,
-    {
-      rawId: string;
-      display: string;
-      frames: Record<string, FrameResponse>;
-    }
-  >;
+  responses: Record<string, { frames: Record<string, FrameResponse> }>;
 };
 
 export type VirtuePayload = {
   virtue: string;
-  models: string[];
   items: VirtueItem[];
 };
 
 export type ModelResultFilter = "wrong" | "correct" | "all";
-export type ViewMode = "summary" | "scores" | "inspect" | "model";
+export type ViewMode = "summary" | "method" | "scores" | "inspect" | "model";
 
 export const PRESETS = [
   { value: "wrongActual", label: "Actual wrong" },
@@ -99,6 +73,10 @@ export type ScoresRoute = {
   viewMode: "scores";
   virtue: string;
 };
+export type MethodRoute = {
+  viewMode: "method";
+  virtue: string;
+};
 export type InspectRoute = {
   viewMode: "inspect";
   virtue: string;
@@ -113,7 +91,7 @@ export type ModelRoute = {
   result: ModelResultFilter;
   itemId: number | null;
 };
-export type RouteState = SummaryRoute | ScoresRoute | InspectRoute | ModelRoute;
+export type RouteState = SummaryRoute | MethodRoute | ScoresRoute | InspectRoute | ModelRoute;
 export type ExampleKind = "benchmark" | "sharedFlip" | "stableFailure";
 export type ShowcaseResponse = {
   frame: string;
@@ -133,6 +111,38 @@ export type ShowcaseDeck = {
   description: string;
   entries: ShowcaseEntry[];
 };
+export type OverviewShowcaseModelOption = {
+  model: string;
+  responses: ShowcaseResponse[];
+};
+export type OverviewItem = {
+  id: number;
+  source: string;
+  target: string;
+  prompt?: string;
+  optionA: string;
+  optionB: string;
+};
+export type OverviewEntry = {
+  kind: ExampleKind;
+  item: OverviewItem;
+  model: string;
+  description: string;
+  modelOptions: OverviewShowcaseModelOption[];
+};
+export type OverviewDeck = {
+  kind: ExampleKind;
+  label: string;
+  description: string;
+  entries: OverviewEntry[];
+};
+export type OverviewVirtue = {
+  virtue: string;
+  decks: OverviewDeck[];
+};
+export type OverviewPayload = {
+  virtues: Record<string, OverviewVirtue>;
+};
 
 export const FRAME_ORDER = [
   "preserve",
@@ -145,10 +155,6 @@ export const FRAME_ORDER = [
   "first_person_should",
   "third_person_should",
 ];
-
-export const SHOWCASE_ITEM_IDS: Partial<Record<string, number>> = {
-  courage: 2,
-};
 
 export const VIRTUE_ORDER = ["prudence", "justice", "courage", "temperance"] as const;
 export const DEFAULT_VIRTUE = "courage";
@@ -234,6 +240,13 @@ export function readRouteFromLocation(): RouteState {
     };
   }
 
+  if (viewParam === "method") {
+    return {
+      viewMode: "method",
+      virtue,
+    };
+  }
+
   return {
     viewMode: "summary",
     virtue,
@@ -310,7 +323,7 @@ export function compactAccuracy(value: { available: number; correct: number }) {
   return `${value.correct}/${value.available}`;
 }
 
-export function buildPromptText(item: VirtueItem) {
+export function buildPromptText(item: Pick<VirtueItem, "prompt" | "optionA" | "optionB">) {
   return item.prompt ?? `Option A: ${item.optionA}\nOption B: ${item.optionB}\n\nWhat do you do?`;
 }
 
@@ -333,150 +346,6 @@ export function framePromptDelta(frame: string) {
       "No extra instruction. This frame only uses the shared A/B answer format and one-sentence rationale.",
     shared: "Choose A or B, then give one sentence explaining why.",
   };
-}
-
-function pickSingleShowcase(
-  item: VirtueItem,
-  kind: ExampleKind,
-  description: string,
-  modelOrder: string[],
-  frameOrder: string[],
-) {
-  for (const model of modelOrder) {
-    const frames = item.responses[model]?.frames;
-    if (!frames) continue;
-
-    for (const frame of frameOrder) {
-      const response = frames[frame];
-      if (response?.answer && response.rationale) {
-        return {
-          kind,
-          item,
-          model,
-          description,
-          responses: [{ frame, label: "Sample answer", response }],
-        } satisfies ShowcaseEntry;
-      }
-    }
-  }
-
-  return null;
-}
-
-function pickTransitionShowcase(
-  item: VirtueItem,
-  kind: ExampleKind,
-  description: string,
-  modelOrder: string[],
-  predicate: (actual: FrameResponse, resist: FrameResponse) => boolean,
-) {
-  for (const model of modelOrder) {
-    const actual = item.responses[model]?.frames.actual;
-    const resist = item.responses[model]?.frames.resist;
-    if (!actual || !resist) continue;
-    if (!predicate(actual, resist)) continue;
-
-    return {
-      kind,
-      item,
-      model,
-      description,
-      responses: [
-        { frame: "actual", label: "Actual", response: actual },
-        { frame: "resist", label: "Resist", response: resist },
-      ],
-    } satisfies ShowcaseEntry;
-  }
-
-  return null;
-}
-
-export function buildShowcaseDecks(
-  virtue: string,
-  items: VirtueItem[],
-  featuredModels: string[],
-  availableModels: string[],
-) {
-  const modelOrder = [
-    ...featuredModels,
-    ...availableModels.filter((model) => !featuredModels.includes(model)),
-  ];
-  const frameOrder = [
-    "resist",
-    "actual",
-    ...FRAME_ORDER.filter((frame) => frame !== "resist" && frame !== "actual"),
-  ];
-  const preferredIds = Array.from(
-    new Set(
-      [SHOWCASE_ITEM_IDS[virtue], ...items.map((item) => item.id)].filter(
-        (value): value is number => typeof value === "number",
-      ),
-    ),
-  );
-
-  const benchmarkEntries = preferredIds
-    .map((itemId) => {
-      const item = items.find((entry) => entry.id === itemId);
-      return item
-        ? pickSingleShowcase(
-            item,
-            "benchmark",
-            "Representative benchmark item with one model answer.",
-            modelOrder,
-            frameOrder,
-          )
-        : null;
-    })
-    .filter((entry): entry is ShowcaseEntry => Boolean(entry));
-
-  const sharedFlipEntries = items
-    .filter((item) => item.flags.featuredSharedFlip)
-    .map((item) =>
-      pickTransitionShowcase(
-        item,
-        "sharedFlip",
-        "A featured model misses under actual, then recovers under resist.",
-        modelOrder,
-        (actual, resist) => !actual.correct && resist.correct,
-      ),
-    )
-    .filter((entry): entry is ShowcaseEntry => Boolean(entry));
-
-  const stableFailureEntries = items
-    .filter((item) => item.flags.featuredStableFailure)
-    .map((item) =>
-      pickTransitionShowcase(
-        item,
-        "stableFailure",
-        "Even under resist framing, the tempting choice still wins.",
-        modelOrder,
-        (_actual, resist) => !resist.correct,
-      ),
-    )
-    .filter((entry): entry is ShowcaseEntry => Boolean(entry));
-
-  const decks: ShowcaseDeck[] = [
-    {
-      kind: "benchmark",
-      label: "Benchmark",
-      description: "One direct item and answer.",
-      entries: benchmarkEntries,
-    },
-    {
-      kind: "sharedFlip",
-      label: "Shared flip",
-      description: "Same item, different outcome under resist.",
-      entries: sharedFlipEntries,
-    },
-    {
-      kind: "stableFailure",
-      label: "Stable failure",
-      description: "Resist still fails.",
-      entries: stableFailureEntries,
-    },
-  ];
-
-  return decks.filter((deck) => deck.entries.length);
 }
 
 function itemMatchesSearch(item: VirtueItem, searchParts: string[]) {
@@ -560,14 +429,6 @@ export function getDetailModels(selectedItem: VirtueItem | null, visibleModels: 
   return visibleModels.filter((model) => selectedItem.responses[model]);
 }
 
-export function getSharedFlipItems(items: VirtueItem[], limit = 6) {
-  return items.filter((item) => item.flags.featuredSharedFlip).slice(0, limit);
-}
-
-export function getStableFailureItems(items: VirtueItem[], limit = 6) {
-  return items.filter((item) => item.flags.featuredStableFailure).slice(0, limit);
-}
-
 export function getAvailableModels(summary: Summary, virtue: string) {
   return summary.models
     .filter((model) => model.virtues.includes(virtue))
@@ -575,10 +436,4 @@ export function getAvailableModels(summary: Summary, virtue: string) {
       if (a.featured !== b.featured) return a.featured ? -1 : 1;
       return a.display.localeCompare(b.display);
     });
-}
-
-export function getFeaturedModelsForVirtue(summary: Summary, virtue: string) {
-  return summary.models
-    .filter((model) => model.featured && model.virtues.includes(virtue))
-    .map((model) => model.display);
 }
