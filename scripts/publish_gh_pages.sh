@@ -16,7 +16,20 @@ cd "$ROOT_DIR"
 REMOTE_URL="$(git remote get-url origin)"
 COMMIT_SHA="$(git rev-parse --short HEAD)"
 
-vp build
+if [[ "$REMOTE_URL" == git@*:* ]]; then
+  REMOTE_PATH="${REMOTE_URL#*:}"
+else
+  REMOTE_PATH="${REMOTE_URL#https://github.com/}"
+  REMOTE_PATH="${REMOTE_PATH#http://github.com/}"
+  REMOTE_PATH="${REMOTE_PATH#ssh://git@github.com/}"
+fi
+
+REPO_NAME="${REMOTE_PATH##*/}"
+REPO_NAME="${REPO_NAME%.git}"
+BASE_PATH="/${REPO_NAME}/"
+
+BASE_PATH="$BASE_PATH" vp build
+cp dist/index.html dist/404.html
 
 cp -R dist/. "$TMP_DIR"/
 touch "$TMP_DIR/.nojekyll"

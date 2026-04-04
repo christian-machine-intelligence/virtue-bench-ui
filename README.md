@@ -33,4 +33,8 @@ vp dev
 - Cloudflare Pages: build command `vp build`, output directory `dist`
 - GitHub Pages fallback: set Pages to `Deploy from a branch`, branch `gh-pages`, folder `/(root)`, then run `vp run publish:pages`
 
-The app is static. No backend. Vite uses a relative base so `public/data/` works on local dev and static hosts.
+The app is static. No backend.
+
+- Local and root-hosted deploys build with `BASE_PATH=/`
+- `publish:pages` derives the repo path, builds with that absolute base, and copies `index.html` to `404.html` so direct path loads still boot on GitHub Pages
+- Cloudflare Pages uses [`public/_redirects`](/Users/h/dev/virtue-bench-ui/public/_redirects) for SPA fallback

@@ -67,7 +67,6 @@ export const PRESETS = [
 export type Preset = (typeof PRESETS)[number]["value"];
 export type SummaryRoute = {
   viewMode: "summary";
-  virtue: string;
 };
 export type ScoresRoute = {
   viewMode: "scores";
@@ -76,6 +75,9 @@ export type ScoresRoute = {
 export type MethodRoute = {
   viewMode: "method";
   virtue: string;
+  kind: ExampleKind;
+  itemId: number | null;
+  modelId: string | null;
 };
 export type InspectRoute = {
   viewMode: "inspect";
@@ -93,6 +95,11 @@ export type ModelRoute = {
 };
 export type RouteState = SummaryRoute | MethodRoute | ScoresRoute | InspectRoute | ModelRoute;
 export type ExampleKind = "benchmark" | "sharedFlip" | "stableFailure";
+export type ShowcaseSelection = {
+  kind: ExampleKind;
+  itemId: number | null;
+  modelId: string | null;
+};
 export type ShowcaseResponse = {
   frame: string;
   label: string;
@@ -194,93 +201,302 @@ export function isKnownModelResult(value: string | null): value is ModelResultFi
   return value === "wrong" || value === "correct" || value === "all";
 }
 
-export function readRouteFromLocation(): RouteState {
-  if (typeof window === "undefined") {
-    return {
-      viewMode: "summary",
-      virtue: DEFAULT_VIRTUE,
-    };
+const EXAMPLE_KIND_SLUGS: Record<ExampleKind, string> = {
+  benchmark: "benchmark",
+  sharedFlip: "shared-flip",
+  stableFailure: "stable-failure",
+};
+
+const PRESET_SLUGS: Record<Preset, string> = {
+  wrongActual: "wrong-actual",
+  changedActualResist: "changed-actual-resist",
+  featuredSharedFlip: "shared-flips",
+  featuredStableFailure: "stable-failures",
+  all: "all",
+};
+
+function parseItemId(value: string | null | undefined) {
+  return value && /^\d+$/.test(value) ? Number(value) : null;
+}
+
+function encodeSegment(value: string) {
+  return encodeURIComponent(value);
+}
+
+function decodeSegment(value: string | null | undefined) {
+  if (!value) return null;
+
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function parseExampleKind(value: string | null | undefined): ExampleKind | null {
+  if (!value) return null;
+
+  return (
+    (Object.entries(EXAMPLE_KIND_SLUGS).find(([, slug]) => slug === value)?.[0] as ExampleKind) ??
+    null
+  );
+}
+
+function exampleKindToSlug(value: ExampleKind) {
+  return EXAMPLE_KIND_SLUGS[value];
+}
+
+function parsePresetSlug(value: string | null | undefined): Preset | null {
+  if (!value) return null;
+
+  return (Object.entries(PRESET_SLUGS).find(([, slug]) => slug === value)?.[0] as Preset) ?? null;
+}
+
+function presetToSlug(value: Preset) {
+  return PRESET_SLUGS[value];
+}
+
+function parseShowcaseTail(segments: string[]) {
+  let itemId: number | null = null;
+  let modelId: string | null = null;
+  let index = 0;
+
+  if (segments[index] === "model") {
+    modelId = decodeSegment(segments[index + 1]);
+    return { itemId, modelId };
   }
 
-  const params = new URLSearchParams(window.location.search);
-  const viewParam = params.get("view");
-  const itemParam = params.get("item");
-  const presetParam = params.get("preset");
-  const virtueParam = params.get("virtue");
-  const modelParam = params.get("model");
-  const resultParam = params.get("result");
-  const frameParam = params.get("frame");
-  const virtue = isKnownVirtue(virtueParam) ? virtueParam : DEFAULT_VIRTUE;
-  const itemId = itemParam && /^\d+$/.test(itemParam) ? Number(itemParam) : null;
-
-  if (viewParam === "inspect") {
-    return {
-      viewMode: "inspect",
-      virtue,
-      itemId,
-      preset: isKnownPreset(presetParam) ? presetParam : DEFAULT_PRESET,
-    };
+  itemId = parseItemId(segments[index]);
+  if (itemId != null) {
+    index += 1;
   }
 
-  if (viewParam === "model" && modelParam) {
-    return {
-      viewMode: "model",
-      virtue,
-      modelId: modelParam,
-      frame: frameParam || null,
-      result: isKnownModelResult(resultParam) ? resultParam : DEFAULT_MODEL_RESULT,
-      itemId,
-    };
+  if (segments[index] === "model") {
+    modelId = decodeSegment(segments[index + 1]);
   }
 
-  if (viewParam === "scores") {
+  return { itemId, modelId };
+}
+
+function parseMethodRoute(virtue: string, segments: string[]): MethodRoute {
+  const parsedKind = parseExampleKind(segments[0]);
+  const kind = parsedKind ?? "benchmark";
+  const tailStart = parsedKind ? 1 : 0;
+  const tail =
+    segments[tailStart] === "case"
+      ? parseShowcaseTail(segments.slice(tailStart + 1))
+      : {
+          itemId: null,
+          modelId: null,
+        };
+
+  return {
+    viewMode: "method",
+    virtue,
+    kind,
+    itemId: tail.itemId,
+    modelId: tail.modelId,
+  };
+}
+
+function parseInspectRoute(virtue: string, segments: string[]): InspectRoute {
+  return {
+    viewMode: "inspect",
+    virtue,
+    preset: parsePresetSlug(segments[0]) ?? DEFAULT_PRESET,
+    itemId: parseItemId(segments[1]),
+  };
+}
+
+function parseModelRoute(virtue: string, segments: string[]): RouteState {
+  const modelId = decodeSegment(segments[0]);
+  if (!modelId) {
     return {
       viewMode: "scores",
       virtue,
     };
   }
 
-  if (viewParam === "method") {
+  let frame: string | null = null;
+  let itemId: number | null = null;
+
+  for (let index = 2; index < segments.length; index += 2) {
+    const key = segments[index];
+    const value = segments[index + 1];
+
+    if (key === "frame") {
+      frame = decodeSegment(value);
+      continue;
+    }
+
+    if (key === "item") {
+      itemId = parseItemId(value);
+    }
+  }
+
+  const result = segments[1] ?? null;
+
+  return {
+    viewMode: "model",
+    virtue,
+    modelId,
+    frame,
+    result: isKnownModelResult(result) ? result : DEFAULT_MODEL_RESULT,
+    itemId,
+  };
+}
+
+export function normalizeBasePath(basePath = import.meta.env.BASE_URL) {
+  const trimmed = (basePath || "/").trim();
+  if (!trimmed || trimmed === "/") return "/";
+  return `/${trimmed.replace(/^\/+|\/+$/g, "")}/`;
+}
+
+function stripBasePath(pathname: string, basePath = import.meta.env.BASE_URL) {
+  const normalizedBasePath = normalizeBasePath(basePath);
+
+  if (normalizedBasePath === "/") {
+    return pathname.startsWith("/") ? pathname : `/${pathname}`;
+  }
+
+  const normalizedRoot = normalizedBasePath.slice(0, -1);
+  if (pathname === normalizedRoot) {
+    return "/";
+  }
+
+  if (pathname.startsWith(normalizedBasePath)) {
+    const stripped = pathname.slice(normalizedBasePath.length - 1);
+    return stripped.startsWith("/") ? stripped : `/${stripped}`;
+  }
+
+  return pathname.startsWith("/") ? pathname : `/${pathname}`;
+}
+
+export function resolveAppUrl(path: string, basePath = import.meta.env.BASE_URL) {
+  const normalizedBasePath = normalizeBasePath(basePath);
+  const trimmedPath = path.replace(/^\/+/, "");
+  return normalizedBasePath === "/" ? `/${trimmedPath}` : `${normalizedBasePath}${trimmedPath}`;
+}
+
+export function readRouteFromLocation(): RouteState {
+  if (typeof window === "undefined") {
     return {
-      viewMode: "method",
+      viewMode: "summary",
+    };
+  }
+
+  const segments = stripBasePath(window.location.pathname).split("/").filter(Boolean);
+  const virtueSegment = segments[0];
+
+  if (!virtueSegment) {
+    return {
+      viewMode: "summary",
+    };
+  }
+
+  if (!isKnownVirtue(virtueSegment)) {
+    return {
+      viewMode: "summary",
+    };
+  }
+
+  const virtue = virtueSegment;
+  const tail = segments.slice(1);
+
+  if (tail[0] === "scores") {
+    return {
+      viewMode: "scores",
       virtue,
+    };
+  }
+
+  if (tail[0] === "method") {
+    return parseMethodRoute(virtue, tail.slice(1));
+  }
+
+  if (tail[0] === "inspect") {
+    return parseInspectRoute(virtue, tail.slice(1));
+  }
+
+  if (tail[0] === "models") {
+    return parseModelRoute(virtue, tail.slice(1));
+  }
+
+  if (tail[0] === "case") {
+    return {
+      viewMode: "summary",
     };
   }
 
   return {
     viewMode: "summary",
-    virtue,
   };
 }
 
-export function buildRouteSearch(route: RouteState) {
-  const params = new URLSearchParams({
-    view: route.viewMode,
-    virtue: route.virtue,
-  });
+export function buildRoutePath(route: RouteState) {
+  if (route.viewMode === "summary") {
+    return "/";
+  }
+
+  if (route.viewMode === "method") {
+    const needsKind = route.kind !== "benchmark" || route.itemId != null || route.modelId !== null;
+    let path = `/${route.virtue}/method`;
+
+    if (needsKind) {
+      path += `/${exampleKindToSlug(route.kind)}`;
+    }
+
+    if (route.itemId != null || route.modelId) {
+      path += "/case";
+
+      if (route.itemId != null) {
+        path += `/${route.itemId}`;
+      }
+
+      if (route.modelId) {
+        path += `/model/${encodeSegment(route.modelId)}`;
+      }
+    }
+
+    return path;
+  }
+
+  if (route.viewMode === "scores") {
+    return `/${route.virtue}/scores`;
+  }
 
   if (route.viewMode === "inspect") {
-    params.set("preset", route.preset);
+    let path = `/${route.virtue}/inspect/${presetToSlug(route.preset)}`;
 
     if (route.itemId != null) {
-      params.set("item", String(route.itemId));
+      path += `/${route.itemId}`;
     }
+
+    return path;
   }
 
-  if (route.viewMode === "model") {
-    params.set("model", route.modelId);
-    params.set("result", route.result);
+  let path = `/${route.virtue}/models/${encodeSegment(route.modelId)}/${route.result}`;
 
-    if (route.frame) {
-      params.set("frame", route.frame);
-    }
-
-    if (route.itemId != null) {
-      params.set("item", String(route.itemId));
-    }
+  if (route.frame) {
+    path += `/frame/${encodeSegment(route.frame)}`;
   }
 
-  return `?${params.toString()}`;
+  if (route.itemId != null) {
+    path += `/item/${route.itemId}`;
+  }
+
+  return path;
+}
+
+export function buildRouteHref(route: RouteState, basePath = import.meta.env.BASE_URL) {
+  const normalizedBasePath = normalizeBasePath(basePath);
+  const routePath = buildRoutePath(route);
+
+  if (normalizedBasePath === "/") {
+    return routePath;
+  }
+
+  return routePath === "/" ? normalizedBasePath : `${normalizedBasePath.slice(0, -1)}${routePath}`;
 }
 
 export function frameSort(a: string, b: string) {

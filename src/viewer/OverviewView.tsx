@@ -1,12 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import {
   buildPromptText,
   framePromptDelta,
-  type ExampleKind,
   type OverviewDeck,
   type OverviewVirtue,
+  type ShowcaseSelection,
   type ShowcaseResponse,
   type Summary,
 } from "./model";
@@ -41,7 +41,9 @@ type SummaryViewProps = {
   virtue: string;
   summary: Summary;
   overviewVirtue: OverviewVirtue;
+  showcase: ShowcaseSelection;
   onInspectItem: (itemId: number) => void;
+  onSetShowcase: (next: ShowcaseSelection) => void;
   onSelectVirtue: (virtue: string) => void;
   onOpenMethod: () => void;
 };
@@ -50,7 +52,9 @@ export function SummaryView({
   virtue,
   summary,
   overviewVirtue,
+  showcase,
   onInspectItem,
+  onSetShowcase,
   onSelectVirtue,
   onOpenMethod,
 }: SummaryViewProps) {
@@ -59,8 +63,7 @@ export function SummaryView({
     (count, current) => count + current.itemCount,
     0,
   );
-  const methodBlurb =
-    "See how framing changes answers, when models flip, and when they fail either way.";
+  const methodBlurb = "Same scenario, different frame: see when models flip, and what stays wrong.";
 
   return (
     <section className="mx-auto grid w-full max-w-[1380px] gap-8">
@@ -152,7 +155,8 @@ export function SummaryView({
                 Cost
               </p>
               <p className="mt-1">
-                The good option can cost safety, comfort, reputation, money, or future advantage.
+                The good option can cost something real: safety, comfort, reputation, money, or
+                future advantage.
               </p>
             </div>
             <div className="border-t border-line/70 pt-3">
@@ -160,8 +164,7 @@ export function SummaryView({
                 Temptation
               </p>
               <p className="mt-1">
-                The tempting option is not openly evil. It is written to sound plausible,
-                responsible, and self-protective.
+                The tempting option is usually safer, easier, and easier to justify.
               </p>
             </div>
           </div>
@@ -233,9 +236,7 @@ export function SummaryView({
                       <p className="text-[15px] font-medium leading-6 text-stone-900">
                         {entry.summary}
                       </p>
-                      <p className="min-h-[3rem] text-sm leading-6 text-stone-700">
-                        {entry.mean}
-                      </p>
+                      <p className="min-h-[3rem] text-sm leading-6 text-stone-700">{entry.mean}</p>
                     </div>
                   </div>
                 </button>
@@ -249,7 +250,9 @@ export function SummaryView({
         <ShowcaseBrowser
           summary={summary}
           decks={[benchmarkDeck]}
+          selection={showcase}
           onInspectItem={onInspectItem}
+          onSelectionChange={onSetShowcase}
           variant="summary"
         />
       ) : null}
@@ -260,52 +263,27 @@ export function SummaryView({
 type ShowcaseBrowserProps = {
   summary: Summary;
   decks: OverviewDeck[];
+  selection: ShowcaseSelection;
   onInspectItem: (itemId: number) => void;
+  onSelectionChange: (next: ShowcaseSelection) => void;
   variant: "summary" | "method";
 };
 
-export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: ShowcaseBrowserProps) {
-  const deckSignature = useMemo(() => decks.map((deck) => deck.kind).join("|"), [decks]);
-  const [activeShowcaseKind, setActiveShowcaseKind] = useState<ExampleKind>(
-    decks[0]?.kind ?? "benchmark",
-  );
-  const [showcaseIndices, setShowcaseIndices] = useState<Record<ExampleKind, number>>({
-    benchmark: 0,
-    sharedFlip: 0,
-    stableFailure: 0,
-  });
-  const [selectedModelsByKind, setSelectedModelsByKind] = useState<Record<ExampleKind, string | null>>({
-    benchmark: null,
-    sharedFlip: null,
-    stableFailure: null,
-  });
-
-  useEffect(() => {
-    setActiveShowcaseKind(decks[0]?.kind ?? "benchmark");
-    setShowcaseIndices({ benchmark: 0, sharedFlip: 0, stableFailure: 0 });
-    setSelectedModelsByKind((current) => {
-      const next = { benchmark: null, sharedFlip: null, stableFailure: null } as Record<
-        ExampleKind,
-        string | null
-      >;
-
-      for (const deck of decks) {
-        const entry = deck.entries[0];
-        const fallbackModel =
-          entry?.modelOptions.find((option) => option.model === entry.model)?.model ??
-          entry?.modelOptions[0]?.model ??
-          entry?.model ??
-          null;
-
-        next[deck.kind] = current[deck.kind] ?? fallbackModel;
-      }
-
-      return next;
-    });
-  }, [deckSignature, decks]);
-
-  const activeDeck = decks.find((deck) => deck.kind === activeShowcaseKind) ?? decks[0] ?? null;
-  const activeIndex = activeDeck ? showcaseIndices[activeDeck.kind] % activeDeck.entries.length : 0;
+export function ShowcaseBrowser({
+  summary,
+  decks,
+  selection,
+  onInspectItem,
+  onSelectionChange,
+  variant,
+}: ShowcaseBrowserProps) {
+  const activeDeck = decks.find((deck) => deck.kind === selection.kind) ?? decks[0] ?? null;
+  const activeIndex = activeDeck
+    ? Math.max(
+        activeDeck.entries.findIndex((entry) => entry.item.id === selection.itemId),
+        0,
+      )
+    : 0;
   const activeEntry = activeDeck ? activeDeck.entries[activeIndex] : null;
 
   if (!activeDeck || !activeEntry) {
@@ -320,13 +298,13 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
   const fallbackModel =
     modelOptions.find((entry) => entry.model === model)?.model ?? modelOptions[0]?.model ?? model;
   const selectedModel =
-    modelOptions.find((entry) => entry.model === selectedModelsByKind[activeDeck.kind])?.model ??
-    fallbackModel;
+    modelOptions.find((entry) => entry.model === selection.modelId)?.model ?? fallbackModel;
   const setSelectedModel = (nextModel: string) => {
-    setSelectedModelsByKind((current) => ({
-      ...current,
-      [activeDeck.kind]: nextModel,
-    }));
+    onSelectionChange({
+      kind: activeDeck.kind,
+      itemId: activeEntry.item.id,
+      modelId: nextModel,
+    });
   };
 
   const activeModelEntry =
@@ -338,7 +316,9 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
   const shellPaddingClass =
     variant === "summary" ? "px-5 py-4 md:px-7 md:py-5" : "px-5 py-5 md:px-7 md:py-6";
   const headingMinHeightClass =
-    variant === "summary" ? "min-h-[4.1rem] md:min-h-[4.5rem]" : "min-h-[4.75rem] md:min-h-[5.25rem]";
+    variant === "summary"
+      ? "min-h-[4.1rem] md:min-h-[4.5rem]"
+      : "min-h-[4.75rem] md:min-h-[5.25rem]";
   const options = [
     { key: "A", text: item.optionA, virtuous: item.target === "A" },
     { key: "B", text: item.optionB, virtuous: item.target === "B" },
@@ -347,20 +327,23 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
   const advanceShowcase = () => {
     if (!activeDeck || activeDeck.entries.length < 2) return;
 
-    setShowcaseIndices((current) => ({
-      ...current,
-      [activeDeck.kind]: (current[activeDeck.kind] + 1) % activeDeck.entries.length,
-    }));
+    const nextIndex = (activeIndex + 1) % activeDeck.entries.length;
+    onSelectionChange({
+      kind: activeDeck.kind,
+      itemId: activeDeck.entries[nextIndex]?.item.id ?? null,
+      modelId: selection.modelId,
+    });
   };
 
   const retreatShowcase = () => {
     if (!activeDeck || activeDeck.entries.length < 2) return;
 
-    setShowcaseIndices((current) => ({
-      ...current,
-      [activeDeck.kind]:
-        (current[activeDeck.kind] - 1 + activeDeck.entries.length) % activeDeck.entries.length,
-    }));
+    const nextIndex = (activeIndex - 1 + activeDeck.entries.length) % activeDeck.entries.length;
+    onSelectionChange({
+      kind: activeDeck.kind,
+      itemId: activeDeck.entries[nextIndex]?.item.id ?? null,
+      modelId: selection.modelId,
+    });
   };
 
   return (
@@ -372,14 +355,20 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
               <div className="-mx-1 overflow-x-auto pb-1">
                 <div className="inline-flex min-w-max rounded-[22px] border border-line bg-white/70 p-1">
                   {decks.map((deck) => {
-                    const active = deck.kind === activeShowcaseKind;
+                    const active = deck.kind === activeDeck.kind;
                     const count = deck.kind === "benchmark" ? null : deck.entries.length;
 
                     return (
                       <button
                         key={deck.kind}
                         type="button"
-                        onClick={() => setActiveShowcaseKind(deck.kind)}
+                        onClick={() =>
+                          onSelectionChange({
+                            kind: deck.kind,
+                            itemId: null,
+                            modelId: null,
+                          })
+                        }
                         className={[
                           "inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 py-1.5 text-[13px] whitespace-nowrap transition-[transform,background-color,color] active:scale-[0.98]",
                           active
@@ -536,7 +525,9 @@ export function ShowcaseBrowser({ summary, decks, onInspectItem, variant }: Show
             </div>
           </section>
 
-          <section className={["xl:grid xl:grid-rows-[auto_minmax(0,1fr)]", bodyMinHeightClass].join(" ")}>
+          <section
+            className={["xl:grid xl:grid-rows-[auto_minmax(0,1fr)]", bodyMinHeightClass].join(" ")}
+          >
             <div className="flex flex-wrap items-center gap-2">
               <ShowcaseModelPicker
                 value={selectedModel}
@@ -584,7 +575,7 @@ function ShowcaseModelPicker({
   const [panelStyle, setPanelStyle] = useState<{ top: number; left: number; width: number } | null>(
     null,
   );
-  const selectedValue = options.includes(value) ? value : options[0] ?? value;
+  const selectedValue = options.includes(value) ? value : (options[0] ?? value);
 
   useEffect(() => {
     if (!open || typeof document === "undefined") return;
@@ -619,7 +610,10 @@ function ShowcaseModelPicker({
       const panelRect = panel.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
-      const width = Math.max(triggerRect.width, Math.min(304, viewportWidth - MODEL_PICKER_VIEWPORT_GUTTER * 2));
+      const width = Math.max(
+        triggerRect.width,
+        Math.min(304, viewportWidth - MODEL_PICKER_VIEWPORT_GUTTER * 2),
+      );
 
       let left = triggerRect.left;
       if (left + width > viewportWidth - MODEL_PICKER_VIEWPORT_GUTTER) {
@@ -653,7 +647,11 @@ function ShowcaseModelPicker({
   }, [open, options.length]);
 
   if (options.length <= 1) {
-    return <p className="text-sm font-medium text-stone-900">{formatShowcaseModelLabel(selectedValue, variant)}</p>;
+    return (
+      <p className="text-sm font-medium text-stone-900">
+        {formatShowcaseModelLabel(selectedValue, variant)}
+      </p>
+    );
   }
 
   return (
@@ -670,7 +668,10 @@ function ShowcaseModelPicker({
         <svg
           aria-hidden="true"
           viewBox="0 0 20 20"
-          className={["size-4 shrink-0 text-ink-soft transition-transform", open ? "rotate-180" : ""].join(" ")}
+          className={[
+            "size-4 shrink-0 text-ink-soft transition-transform",
+            open ? "rotate-180" : "",
+          ].join(" ")}
           fill="none"
           stroke="currentColor"
           strokeWidth="1.8"
@@ -700,7 +701,7 @@ function ShowcaseModelPicker({
                       top: -9999,
                       left: -9999,
                       visibility: "hidden",
-                  }
+                    }
               }
               className="z-[95] max-h-[min(70vh,28rem)] overflow-auto rounded-[22px] border border-line bg-[#fffdf9]/98 p-2 shadow-[0_22px_56px_rgba(28,24,20,0.16)] backdrop-blur-sm"
             >
@@ -726,11 +727,15 @@ function ShowcaseModelPicker({
                       }}
                       className={[
                         "flex w-full items-center justify-between gap-3 rounded-[16px] px-3 py-2.5 text-left transition-[background-color,color]",
-                        selected ? "bg-accent-soft/70 text-stone-900" : "text-stone-700 hover:bg-white",
+                        selected
+                          ? "bg-accent-soft/70 text-stone-900"
+                          : "text-stone-700 hover:bg-white",
                       ].join(" ")}
                     >
                       <div className="grid gap-0.5">
-                        <span className="text-[13px] font-medium leading-5 text-inherit">{option}</span>
+                        <span className="text-[13px] font-medium leading-5 text-inherit">
+                          {option}
+                        </span>
                         {selected ? (
                           <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-accent">
                             Current

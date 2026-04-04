@@ -1,7 +1,8 @@
 import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  buildRouteSearch,
+  buildRouteHref,
+  DEFAULT_VIRTUE,
   DEFAULT_MODEL_RESULT,
   DEFAULT_PRESET,
   filterItems,
@@ -13,10 +14,12 @@ import {
   getSelectedItem,
   PRESETS,
   readRouteFromLocation,
+  resolveAppUrl,
   VIRTUE_ORDER,
   type OverviewPayload,
   type Preset,
   type RouteState,
+  type ShowcaseSelection,
   type Summary,
   type VirtuePayload,
 } from "./viewer/model";
@@ -78,14 +81,22 @@ export default function App() {
   const [route, setRoute] = useState<RouteState>(() => readRouteFromLocation());
   const [summary, setSummary] = useState<Summary | null>(null);
   const [overview, setOverview] = useState<OverviewPayload | null>(null);
+  const [summaryVirtue, setSummaryVirtue] = useState(DEFAULT_VIRTUE);
+  const [summaryShowcase, setSummaryShowcaseState] = useState<ShowcaseSelection>({
+    kind: "benchmark",
+    itemId: null,
+    modelId: null,
+  });
   const [virtueDataByVirtue, setVirtueDataByVirtue] = useState<Record<string, VirtuePayload>>({});
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search.trim().toLowerCase());
   const virtueRequestsRef = useRef<Record<string, Promise<VirtuePayload>>>({});
-  const overviewVirtue = overview?.virtues[route.virtue] ?? null;
+  const activeVirtue = route.viewMode === "summary" ? summaryVirtue : route.virtue;
+  const routeVirtue = route.viewMode === "summary" ? null : route.virtue;
+  const overviewVirtue = overview?.virtues[activeVirtue] ?? null;
   const virtueOptions = summary ? VIRTUE_ORDER.filter((entry) => entry in summary.virtues) : [];
-  const virtueData = virtueDataByVirtue[route.virtue] ?? null;
+  const virtueData = routeVirtue ? (virtueDataByVirtue[routeVirtue] ?? null) : null;
   const dataset = useMemo(
     () => (summary && virtueData ? normalizeViewerDataset(summary, virtueData) : null),
     [summary, virtueData],
@@ -95,8 +106,8 @@ export default function App() {
     let cancelled = false;
 
     Promise.all([
-      fetchJson<Summary>("./data/summary.json"),
-      fetchJson<OverviewPayload>("./data/overview.json"),
+      fetchJson<Summary>(resolveAppUrl("data/summary.json")),
+      fetchJson<OverviewPayload>(resolveAppUrl("data/overview.json")),
     ])
       .then(([summaryData, overviewData]) => {
         if (cancelled) return;
@@ -111,17 +122,19 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (
-      route.viewMode === "summary" ||
-      route.viewMode === "method" ||
-      virtueDataByVirtue[route.virtue]
-    )
-      return;
+    if (!summary || summaryVirtue in summary.virtues) return;
+    setSummaryVirtue(VIRTUE_ORDER.find((entry) => entry in summary.virtues) ?? DEFAULT_VIRTUE);
+  }, [summary, summaryVirtue]);
+
+  useEffect(() => {
+    if (route.viewMode === "summary" || route.viewMode === "method" || !routeVirtue) return;
+    if (virtueDataByVirtue[routeVirtue]) return;
 
     let cancelled = false;
-    const existing = virtueRequestsRef.current[route.virtue];
-    const request = existing ?? fetchJson<VirtuePayload>(`./data/virtues/${route.virtue}.json`);
-    virtueRequestsRef.current[route.virtue] = request;
+    const existing = virtueRequestsRef.current[routeVirtue];
+    const request =
+      existing ?? fetchJson<VirtuePayload>(resolveAppUrl(`data/virtues/${routeVirtue}.json`));
+    virtueRequestsRef.current[routeVirtue] = request;
 
     request
       .then((data) => {
@@ -137,14 +150,14 @@ export default function App() {
         );
       })
       .catch((error) => {
-        delete virtueRequestsRef.current[route.virtue];
+        delete virtueRequestsRef.current[routeVirtue];
         console.error(error);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [route.viewMode, route.virtue, virtueDataByVirtue]);
+  }, [route.viewMode, routeVirtue, virtueDataByVirtue]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -167,12 +180,12 @@ export default function App() {
   const navigate = (nextRoute: RouteState) => {
     startTransition(() => {
       setRoute((current) => {
-        const currentSearch = buildRouteSearch(current);
-        const nextSearch = buildRouteSearch(nextRoute);
-        if (currentSearch === nextSearch) return current;
+        const currentHref = buildRouteHref(current);
+        const nextHref = buildRouteHref(nextRoute);
+        if (currentHref === nextHref) return current;
 
-        if (typeof window !== "undefined" && window.location.search !== nextSearch) {
-          window.history.pushState(null, "", `${window.location.pathname}${nextSearch}`);
+        if (typeof window !== "undefined" && window.location.pathname !== nextHref) {
+          window.history.pushState(null, "", nextHref);
         }
 
         return nextRoute;
@@ -181,10 +194,39 @@ export default function App() {
   };
 
   const setRoutedViewMode = (viewMode: "summary" | "method" | "scores" | "inspect") => {
+    if (viewMode === "summary") {
+      if (route.viewMode !== "summary") {
+        setSummaryVirtue(route.virtue);
+      }
+      navigate({ viewMode: "summary" });
+      return;
+    }
+
+    if (viewMode === "method") {
+      if (route.viewMode === "summary") {
+        navigate({
+          viewMode: "method",
+          virtue: summaryVirtue,
+          kind: "benchmark",
+          itemId: summaryShowcase.itemId,
+          modelId: summaryShowcase.modelId,
+        });
+      } else {
+        navigate({
+          viewMode: "method",
+          virtue: route.virtue,
+          kind: route.viewMode === "method" ? route.kind : "benchmark",
+          itemId: route.viewMode === "method" ? route.itemId : null,
+          modelId: route.viewMode === "method" ? route.modelId : null,
+        });
+      }
+      return;
+    }
+
     if (viewMode === "inspect") {
       navigate({
         viewMode: "inspect",
-        virtue: route.virtue,
+        virtue: route.viewMode === "summary" ? summaryVirtue : route.virtue,
         preset: route.viewMode === "inspect" ? route.preset : DEFAULT_PRESET,
         itemId: route.viewMode === "inspect" ? route.itemId : null,
       });
@@ -193,7 +235,7 @@ export default function App() {
 
     navigate({
       viewMode,
-      virtue: route.virtue,
+      virtue: route.viewMode === "summary" ? summaryVirtue : route.virtue,
     });
   };
 
@@ -207,6 +249,27 @@ export default function App() {
         virtue,
         preset: DEFAULT_PRESET,
         itemId: null,
+      });
+      return;
+    }
+
+    if (route.viewMode === "summary") {
+      setSummaryVirtue(virtue);
+      setSummaryShowcaseState((current) => ({
+        ...current,
+        kind: "benchmark",
+        itemId: null,
+      }));
+      return;
+    }
+
+    if (route.viewMode === "method") {
+      navigate({
+        viewMode: "method",
+        virtue,
+        kind: route.kind,
+        itemId: null,
+        modelId: null,
       });
       return;
     }
@@ -237,20 +300,40 @@ export default function App() {
     });
   };
 
+  const setSummaryShowcase = (showcase: ShowcaseSelection) => {
+    setSummaryShowcaseState(showcase);
+  };
+
+  const setMethodShowcase = (showcase: ShowcaseSelection) => {
+    if (route.viewMode !== "method") return;
+
+    navigate({
+      viewMode: "method",
+      virtue: route.virtue,
+      kind: showcase.kind,
+      itemId: showcase.itemId,
+      modelId: showcase.modelId,
+    });
+  };
+
   const setRoutedPreset = (preset: Preset) => {
+    if (route.viewMode !== "inspect") return;
+
     navigate({
       viewMode: "inspect",
       virtue: route.virtue,
       preset,
-      itemId: route.viewMode === "inspect" ? route.itemId : null,
+      itemId: route.itemId,
     });
   };
 
   const setRoutedSelectedItemId = (itemId: number | null) => {
+    if (route.viewMode !== "inspect") return;
+
     navigate({
       viewMode: "inspect",
       virtue: route.virtue,
-      preset: route.viewMode === "inspect" ? route.preset : DEFAULT_PRESET,
+      preset: route.preset,
       itemId,
     });
   };
@@ -259,13 +342,15 @@ export default function App() {
     setSearch("");
     navigate({
       viewMode: "inspect",
-      virtue: route.virtue,
+      virtue: route.viewMode === "summary" ? summaryVirtue : route.virtue,
       itemId,
       preset: "all",
     });
   };
 
   const openModel = (modelId: string, frame: string | null) => {
+    if (route.viewMode === "summary") return;
+
     setSearch("");
     navigate({
       viewMode: "model",
@@ -324,14 +409,37 @@ export default function App() {
     return <LoadingScreen />;
   }
 
+  const methodShowcase: ShowcaseSelection =
+    route.viewMode === "method"
+      ? {
+          kind: route.kind,
+          itemId: route.itemId,
+          modelId: route.modelId,
+        }
+      : {
+          kind: "benchmark",
+          itemId: null,
+          modelId: null,
+        };
+
   let content = (
     <SummaryView
-      virtue={route.virtue}
+      virtue={summaryVirtue}
       summary={summary}
       overviewVirtue={overviewVirtue}
+      showcase={summaryShowcase}
       onInspectItem={inspectItem}
+      onSetShowcase={setSummaryShowcase}
       onSelectVirtue={setRoutedVirtue}
-      onOpenMethod={() => navigate({ viewMode: "method", virtue: route.virtue })}
+      onOpenMethod={() =>
+        navigate({
+          viewMode: "method",
+          virtue: summaryVirtue,
+          kind: "benchmark",
+          itemId: summaryShowcase.itemId,
+          modelId: summaryShowcase.modelId,
+        })
+      }
     />
   );
 
@@ -341,7 +449,9 @@ export default function App() {
         virtue={route.virtue}
         summary={summary}
         overviewVirtue={overviewVirtue}
+        showcase={methodShowcase}
         onInspectItem={inspectItem}
+        onSetShowcase={setMethodShowcase}
       />
     );
   } else if (route.viewMode !== "summary") {

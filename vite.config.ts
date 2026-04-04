@@ -2,6 +2,14 @@ import { defineConfig } from "vite-plus";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
+const basePath = (
+  globalThis as {
+    process?: {
+      env?: Record<string, string | undefined>;
+    };
+  }
+).process?.env?.BASE_PATH;
+
 export default defineConfig({
   fmt: {
     ignorePatterns: ["public/data/**"],
@@ -15,6 +23,6 @@ export default defineConfig({
   test: {
     passWithNoTests: true,
   },
-  base: "./",
+  base: basePath ?? "/",
   plugins: [react(), tailwindcss()],
 });
