@@ -1,11 +1,15 @@
 import { frameSort, type OverviewVirtue, type ShowcaseSelection, type Summary } from "./model";
 import { ShowcaseBrowser } from "./OverviewView";
+import { InfoPopover } from "./chrome";
 
 const FRAME_KIND_ORDER = ["measurement", "interpretive", "coached"] as const;
-const FRAME_KIND_EXPLANATIONS: Record<string, string> = {
-  measurement: "default test and stripped baseline",
-  interpretive: "changes what the model is told to foreground",
-  coached: "explicit directional push",
+const FRAME_KIND_DETAILS: Record<string, string> = {
+  measurement:
+    "Benchmark and baseline frames. They either ask what the model would actually do or strip the prompt back to the bare response format.",
+  interpretive:
+    "Same dilemma, same format. These only change what the model is told to foreground while answering.",
+  coached:
+    "These add explicit directional pressure. They test whether the answer moves when the prompt leans toward preservation or resistance.",
 };
 
 type MethodViewProps = {
@@ -79,13 +83,37 @@ export function MethodView({
               {frameGroups.map((group) => (
                 <section key={group.kind} className="border-t border-line/70 pt-3">
                   <div className="grid gap-2">
-                    <div className="grid gap-1">
+                    <div className="flex items-center gap-2">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
                         {group.kind}
                       </p>
-                      <p className="text-[14px] leading-6 text-stone-800">
-                        {FRAME_KIND_EXPLANATIONS[group.kind]}
-                      </p>
+                      <InfoPopover
+                        label={`Explain ${group.kind} frames`}
+                        widthClass="w-[min(23rem,calc(100vw-3rem))]"
+                        align="right"
+                      >
+                        <div className="grid gap-3">
+                          <div className="grid gap-1">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-accent">
+                              {group.kind}
+                            </p>
+                            <p className="text-sm leading-6 text-stone-800">
+                              {FRAME_KIND_DETAILS[group.kind]}
+                            </p>
+                          </div>
+
+                          <div className="grid gap-2 border-t border-line/70 pt-3 text-sm leading-6 text-stone-800">
+                            {group.frames.map((frame) => (
+                              <div key={frame} className="grid gap-0.5">
+                                <p className="font-medium text-stone-900">
+                                  {summary.frames[frame].label}
+                                </p>
+                                <p>{summary.frames[frame].blurb}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </InfoPopover>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -107,29 +135,6 @@ export function MethodView({
       </section>
 
       <section className="grid gap-5 px-2">
-        {hasResist && hasTransitionDeck ? (
-          <div className="grid gap-2 border-t border-line/70 pt-4 text-sm leading-6 text-stone-800 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)]">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
-                Shared Flip
-              </p>
-              <p className="mt-1">A stronger frame moves the answer.</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
-                Stable Failure
-              </p>
-              <p className="mt-1">Even a stronger frame cannot move it.</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">
-                Read It As
-              </p>
-              <p className="mt-1">First read: steerability. Second read: moral signal.</p>
-            </div>
-          </div>
-        ) : null}
-
         {!hasResist || !hasTransitionDeck ? (
           <div className="border-t border-line/70 pt-4 text-sm leading-6 text-stone-800">
             V1 coverage is uneven. Courage is where the stronger steering comparisons live right

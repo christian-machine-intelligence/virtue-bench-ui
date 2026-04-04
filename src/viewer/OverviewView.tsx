@@ -312,6 +312,7 @@ export function ShowcaseBrowser({
   const displayResponses = activeModelEntry?.responses ?? [];
   const showDeckTabs = decks.length > 1;
   const showSingleDeckLabel = !showDeckTabs && variant === "method";
+  const showMethodDeckDescription = variant === "method";
   const bodyMinHeightClass = variant === "summary" ? "xl:min-h-[16.5rem]" : "xl:min-h-[20.5rem]";
   const shellPaddingClass =
     variant === "summary" ? "px-5 py-4 md:px-7 md:py-5" : "px-5 py-5 md:px-7 md:py-6";
@@ -401,6 +402,12 @@ export function ShowcaseBrowser({
                 </span>
                 <span>{activeDeck.description}</span>
               </div>
+            ) : null}
+
+            {showMethodDeckDescription && showDeckTabs ? (
+              <p className="max-w-[34rem] text-sm leading-6 text-stone-800">
+                {activeDeck.description}
+              </p>
             ) : null}
 
             <div className={["grid gap-1", headingMinHeightClass].join(" ")}>
